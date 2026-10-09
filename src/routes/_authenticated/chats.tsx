@@ -300,15 +300,15 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
     qc.invalidateQueries({ queryKey: ["messages", convId] });
   }
 
-  async function sendFile(file: File) {
-    if (file.size > 20 * 1024 * 1024) return toast.error("Máximo 20 MB por archivo");
+  async function sendFile(file: File): Promise<void> {
+    if (file.size > 20 * 1024 * 1024) { toast.error("Máximo 20 MB por archivo"); return; }
     setSending(true);
     const safe = file.name.replace(/[^\w.-]/g, "_");
     const path = `${convId}/${crypto.randomUUID()}-${safe}`;
     const up = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type });
     if (up.error) {
       setSending(false);
-      return toast.error("No se pudo subir el archivo");
+      { toast.error("No se pudo subir el archivo"); return; }
     }
     await supabase.from("messages").insert({
       conversation_id: convId, sender_id: me, attachment_path: path,
@@ -443,10 +443,10 @@ function Attachment({ m }: { m: Message }) {
 function NewChatDialog({ open, onOpenChange, me, onOpened }: { open: boolean; onOpenChange: (o: boolean) => void; me: string; onOpened: (id: string) => void }) {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const p = normalizePhone(phone);
-    if (!p) return toast.error("Número inválido. Incluye el código de país");
+    if (!p) { toast.error("Número inválido. Incluye el código de país"); return; }
     setBusy(true);
     try {
       const id = await openConversationWith(me, p);
