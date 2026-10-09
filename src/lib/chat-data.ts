@@ -55,7 +55,7 @@ export async function openConversationWith(me: string, phone: string): Promise<s
   const { data: other } = await supabase.from("profiles").select("id").eq("phone", phone).maybeSingle();
   if (!other) throw new Error("Ese número aún no está registrado en Chatline");
   if (other.id === me) throw new Error("No puedes chatear contigo mismo");
-  const [a, b] = [me, other.id].sort();
+  const [a, b] = [me, other.id].sort() as [string, string];
   const { data: existing } = await supabase
     .from("conversations")
     .select("id")

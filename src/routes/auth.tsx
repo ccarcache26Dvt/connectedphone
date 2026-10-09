@@ -28,11 +28,11 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const p = normalizePhone(phone);
-    if (!p) return toast.error("Número inválido. Incluye el código de país, ej. +505 8888 1234");
-    if (password.length < 6) return toast.error("La contraseña debe tener al menos 6 caracteres");
+    if (!p) { toast.error("Número inválido. Incluye el código de país, ej. +505 8888 1234"); return; }
+    if (password.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
     setLoading(true);
     const email = phoneToEmail(p);
     const { error } =
@@ -50,7 +50,7 @@ function AuthPage() {
         : error.message.includes("Invalid login")
           ? "Número o contraseña incorrectos"
           : error.message;
-      return toast.error(msg);
+      { toast.error(msg); return; }
     }
     navigate({ to: "/chats", replace: true });
   }
