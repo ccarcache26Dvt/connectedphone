@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Chatline — Mensajería por número de teléfono" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { title: "Connected — Mensajería por número de teléfono" },
       { name: "description", content: "Mensajes privados 1 a 1 con tu número de teléfono. Fotos, archivos y visto en tiempo real." },
-      { property: "og:title", content: "Chatline — Mensajería por número de teléfono" },
+      { property: "og:title", content: "Connected — Mensajería por número de teléfono" },
       { property: "og:description", content: "Mensajes privados 1 a 1 con tu número. Tus conversaciones siempre guardadas." },
     ],
   }),
@@ -22,7 +24,7 @@ function Index() {
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
             <MessageCircle className="h-5 w-5" />
           </span>
-          Chatline
+          Connected
         </div>
         <Button asChild variant="ghost">
           <Link to="/auth">Entrar</Link>
@@ -31,9 +33,9 @@ function Index() {
 
       <section className="mx-auto grid max-w-6xl gap-12 px-6 pb-24 pt-12 md:grid-cols-2 md:items-center">
         <div>
-          <h1 className="text-5xl font-semibold leading-tight tracking-tight md:text-6xl">
-            Tu número.<br />
-            <span className="text-primary">Tus conversaciones.</span>
+          <h1 className="text-5xl font-semibold leading-tight md:text-6xl">
+            Connected<br />
+            <span className="text-foreground">Tus conversaciones.</span>
           </h1>
           <p className="mt-6 max-w-md text-lg text-muted-foreground">
             Escribe a cualquier persona solo con su número de teléfono. Todo queda guardado y sincronizado al instante.

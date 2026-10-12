@@ -11,9 +11,11 @@ import { normalizePhone, phoneToEmail } from "@/lib/phone";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Entrar — Chatline" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { title: "Entrar — Connected" },
       { name: "description", content: "Inicia sesión o crea tu cuenta con tu número de teléfono." },
-      { property: "og:title", content: "Entrar — Chatline" },
+      { property: "og:title", content: "Entrar — Connected" },
       { property: "og:description", content: "Accede con tu número de teléfono y contraseña." },
     ],
   }),
@@ -35,7 +37,7 @@ function AuthPage() {
     if (password.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
     setLoading(true);
     const email = phoneToEmail(p);
-    const { error } =
+    const { data, error } =
       mode === "up"
         ? await supabase.auth.signUp({
             email,
@@ -52,6 +54,10 @@ function AuthPage() {
           : error.message;
       { toast.error(msg); return; }
     }
+    if (!data.session) {
+      toast.error("Tu cuenta necesita confirmación antes de entrar. El registro por número aún no está habilitado.");
+      return;
+    }
     navigate({ to: "/chats", replace: true });
   }
 
@@ -62,7 +68,7 @@ function AuthPage() {
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
             <MessageCircle className="h-5 w-5" />
           </span>
-          Chatline
+          Connected
         </Link>
         <h1 className="text-2xl font-semibold">{mode === "in" ? "Bienvenido de vuelta" : "Crea tu cuenta"}</h1>
         <form onSubmit={submit} className="mt-6 space-y-4">
@@ -84,13 +90,14 @@ function AuthPage() {
             {loading ? "Un momento…" : mode === "in" ? "Entrar" : "Registrarme"}
           </Button>
         </form>
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => setMode(mode === "in" ? "up" : "in")}
           className="mt-6 w-full text-center text-sm text-muted-foreground hover:text-foreground"
         >
           {mode === "in" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Entra"}
-        </button>
+        </Button>
       </div>
     </main>
   );
