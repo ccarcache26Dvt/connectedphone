@@ -35,7 +35,7 @@ function Index() {
         <div>
           <h1 className="text-5xl font-semibold leading-tight md:text-6xl">
             Connected<br />
-            <span className="text-primary">Tus conversaciones.</span>
+            <span className="text-foreground">Tus conversaciones.</span>
           </h1>
           <p className="mt-6 max-w-md text-lg text-muted-foreground">
             Escribe a cualquier persona solo con su número de teléfono. Todo queda guardado y sincronizado al instante.
