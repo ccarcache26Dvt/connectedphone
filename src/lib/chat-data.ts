@@ -20,7 +20,7 @@ export async function fetchConversations(me: string): Promise<ConversationItem[]
   if (error) throw error;
   if (!convs.length) return [];
   const otherIds = convs.map((c) => (c.user_a === me ? c.user_b : c.user_a));
-  const [{ data: profiles }, { data: msgs }] = await Promise.all([
+  const [{ data: profiles, error: profileError }, { data: msgs, error: messageError }] = await Promise.all([
     supabase.from("profiles").select("*").in("id", otherIds),
     supabase
       .from("messages")
@@ -29,6 +29,8 @@ export async function fetchConversations(me: string): Promise<ConversationItem[]
       .order("created_at", { ascending: false })
       .limit(500),
   ]);
+  if (profileError) throw profileError;
+  if (messageError) throw messageError;
   return convs.map((conv) => {
     const otherId = conv.user_a === me ? conv.user_b : conv.user_a;
     const own = (msgs ?? []).filter((m) => m.conversation_id === conv.id);
@@ -52,18 +54,26 @@ export async function fetchMessages(convId: string): Promise<Message[]> {
 }
 
 export async function openConversationWith(me: string, phone: string): Promise<string> {
-  const { data: other } = await supabase.from("profiles").select("id").eq("phone", phone).maybeSingle();
+  const { data: other, error: profileError } = await supabase.from("profiles").select("id").eq("phone", phone).maybeSingle();
+  if (profileError) throw profileError;
   if (!other) throw new Error("Ese número aún no está registrado en Connected");
   if (other.id === me) throw new Error("No puedes chatear contigo mismo");
   const [a, b] = [me, other.id].sort() as [string, string];
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from("conversations")
     .select("id")
     .eq("user_a", a)
     .eq("user_b", b)
     .maybeSingle();
+  if (lookupError) throw lookupError;
   if (existing) return existing.id;
   const { data, error } = await supabase.from("conversations").insert({ user_a: a, user_b: b }).select("id").single();
+  if (error?.code === "23505") {
+    const { data: concurrent, error: retryError } = await supabase
+      .from("conversations").select("id").eq("user_a", a).eq("user_b", b).single();
+    if (retryError) throw retryError;
+    return concurrent.id;
+  }
   if (error) throw error;
   return data.id;
 }
