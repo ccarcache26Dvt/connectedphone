@@ -50,8 +50,10 @@ function AuthPage() {
       const msg = error.message.includes("already registered")
         ? "Ese número ya tiene cuenta. Inicia sesión."
         : error.message.includes("Invalid login")
-          ? "Número o contraseña incorrectos"
-          : error.message;
+          ? "Número o contraseña incorrectos. Si aún no tienes cuenta, regístrate primero."
+          : /weak|easy to guess|pwned/i.test(error.message)
+            ? "Esa contraseña es muy común y no es segura. Elige otra más única (mezcla letras, números y símbolos)."
+            : error.message;
       { toast.error(msg); return; }
     }
     if (!data.session) {
