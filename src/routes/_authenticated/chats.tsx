@@ -25,10 +25,12 @@ export const Route = createFileRoute("/_authenticated/chats")({
   validateSearch: z.object({ c: z.string().optional() }),
   head: () => ({
     meta: [
-      { title: "Chats — Chatline" },
-      { name: "description", content: "Tus conversaciones en Chatline." },
-      { property: "og:title", content: "Chats — Chatline" },
-      { property: "og:description", content: "Tus conversaciones en Chatline." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { title: "Chats — Connected" },
+      { name: "description", content: "Tus conversaciones en Connected." },
+      { property: "og:title", content: "Chats — Connected" },
+      { property: "og:description", content: "Tus conversaciones en Connected." },
     ],
   }),
   component: ChatsPage,
@@ -111,14 +113,15 @@ function ChatsPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-dvh overflow-hidden bg-background">
       {/* Sidebar */}
       <aside className={cn("flex w-full flex-col border-r bg-panel md:w-[380px]", active && "hidden md:flex")}>
         <div className="flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
+          <div className="min-w-0 flex items-center gap-3">
             <Avatar name={myProfile?.display_name ?? ""} />
             <div className="leading-tight">
-              <div className="font-semibold">{myProfile?.display_name}</div>
+              <div className="font-display text-lg font-semibold">Connected</div>
+              <div className="truncate text-sm">{myProfile?.display_name}</div>
               <div className="text-xs text-muted-foreground">{myProfile && formatPhone(myProfile.phone)}</div>
             </div>
           </div>
@@ -174,7 +177,7 @@ function ChatsPage() {
             <span className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground">
               <MessageCircle className="h-8 w-8" />
             </span>
-            <h2 className="text-2xl font-semibold">Chatline</h2>
+            <h2 className="text-2xl font-semibold">Connected</h2>
             <p className="max-w-xs text-sm text-muted-foreground">Elige una conversación o inicia una nueva con un número de teléfono.</p>
           </div>
         )}
@@ -209,7 +212,7 @@ function ConvRow({ item, me, active, online, onClick }: { item: ConversationItem
   const last = item.last;
   const preview = last ? (last.body || (last.attachment_type?.startsWith("image/") ? "📷 Foto" : `📎 ${last.attachment_name ?? "Archivo"}`)) : "Nuevo chat";
   return (
-    <button onClick={onClick} className={cn("flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent", active && "bg-accent")}>
+    <Button variant="ghost" onClick={onClick} className={cn("flex h-auto w-full justify-start whitespace-normal rounded-none items-center gap-3 px-4 py-3 text-left", active && "bg-accent")}>
       <Avatar name={name} online={online} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
@@ -226,7 +229,7 @@ function ConvRow({ item, me, active, online, onClick }: { item: ConversationItem
           )}
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -294,10 +297,13 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
     e?.preventDefault();
     const body = text.trim();
     if (!body) return;
-    setText("");
+    setSending(true);
     const { error } = await supabase.from("messages").insert({ conversation_id: convId, sender_id: me, body });
-    if (error) toast.error("No se pudo enviar");
+    setSending(false);
+    if (error) { toast.error("No se pudo enviar. Tu mensaje sigue aquí para reintentar."); return; }
+    setText("");
     qc.invalidateQueries({ queryKey: ["messages", convId] });
+    qc.invalidateQueries({ queryKey: ["conversations", me] });
   }
 
   async function sendFile(file: File): Promise<void> {
@@ -310,12 +316,14 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
       setSending(false);
       { toast.error("No se pudo subir el archivo"); return; }
     }
-    await supabase.from("messages").insert({
+    const { error } = await supabase.from("messages").insert({
       conversation_id: convId, sender_id: me, attachment_path: path,
       attachment_type: file.type || "application/octet-stream", attachment_name: file.name,
     });
     setSending(false);
+    if (error) { toast.error("El archivo no se pudo enviar. Inténtalo de nuevo."); return; }
     qc.invalidateQueries({ queryKey: ["messages", convId] });
+    qc.invalidateQueries({ queryKey: ["conversations", me] });
   }
 
   const grouped = useMemo(() => {
@@ -324,7 +332,7 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
       const d = new Date(m.created_at);
       const day = isToday(d) ? "Hoy" : isYesterday(d) ? "Ayer" : format(d, "d 'de' MMMM yyyy", { locale: es });
       if (out.at(-1)?.day !== day) out.push({ day, items: [] });
-      out.at(-1)!.items.push(m);
+      out.at(-1)?.items.push(m);
     }
     return out;
   }, [messages]);
@@ -385,7 +393,7 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
           placeholder={sending ? "Subiendo archivo…" : "Escribe un mensaje"}
           className="h-11 rounded-full"
         />
-        <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={!text.trim()} aria-label="Enviar">
+        <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={sending || !text.trim()} aria-label="Enviar">
           <Send className="h-5 w-5" />
         </Button>
       </form>
@@ -421,7 +429,12 @@ function Attachment({ m }: { m: Message }) {
   const { data: url } = useQuery({
     queryKey: ["signed", m.attachment_path],
     staleTime: 50 * 60 * 1000,
-    queryFn: async () => (await supabase.storage.from("attachments").createSignedUrl(m.attachment_path!, 3600)).data?.signedUrl ?? null,
+    queryFn: async () => {
+      if (!m.attachment_path) return null;
+      const { data, error } = await supabase.storage.from("attachments").createSignedUrl(m.attachment_path, 3600);
+      if (error) throw error;
+      return data?.signedUrl ?? null;
+    },
   });
   if (m.attachment_type?.startsWith("image/")) {
     return url ? (

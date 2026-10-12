@@ -53,7 +53,7 @@ export async function fetchMessages(convId: string): Promise<Message[]> {
 
 export async function openConversationWith(me: string, phone: string): Promise<string> {
   const { data: other } = await supabase.from("profiles").select("id").eq("phone", phone).maybeSingle();
-  if (!other) throw new Error("Ese número aún no está registrado en Chatline");
+  if (!other) throw new Error("Ese número aún no está registrado en Connected");
   if (other.id === me) throw new Error("No puedes chatear contigo mismo");
   const [a, b] = [me, other.id].sort() as [string, string];
   const { data: existing } = await supabase
