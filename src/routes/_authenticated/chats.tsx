@@ -137,6 +137,7 @@ function ChatsPage() {
     };
   }, [me]);
 
+  convsRef.current = convs;
   const active = convs.find((c) => c.conv.id === activeId) ?? null;
   const filtered = convs.filter((c) => {
     const q = filter.toLowerCase();
@@ -164,6 +165,11 @@ function ChatsPage() {
             </div>
           </div>
           <div className="flex gap-1">
+            {notifPermission !== "granted" && notifPermission !== "unsupported" && (
+              <Button size="icon" variant="ghost" onClick={enableNotifications} aria-label="Activar notificaciones">
+                {notifPermission === "denied" ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
+              </Button>
+            )}
             <Button size="icon" variant="ghost" onClick={() => setNewOpen(true)} aria-label="Nuevo chat">
               <Plus className="h-5 w-5" />
             </Button>
