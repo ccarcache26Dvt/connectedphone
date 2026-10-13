@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, Check, CheckCheck, FileText, LogOut, MessageCircle, Paperclip, Plus, Search, Send,
+  ArrowLeft, Bell, BellOff, Check, CheckCheck, FileText, LogOut, MessageCircle, Paperclip, Plus, Search, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -52,6 +52,10 @@ function ChatsPage() {
   const [online, setOnline] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() =>
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
+  );
+  const convsRef = useRef<ConversationItem[]>([]);
 
   const { data: myProfile } = useQuery({
     queryKey: ["profile", me],
@@ -70,6 +74,25 @@ function ChatsPage() {
         const row = (payload.new ?? payload.old) as Message;
         qc.invalidateQueries({ queryKey: ["conversations", me] });
         if (row?.conversation_id) qc.invalidateQueries({ queryKey: ["messages", row.conversation_id] });
+        // Notify on incoming messages
+        if (payload.eventType === "INSERT" && row?.sender_id && row.sender_id !== me) {
+          const sender = convsRef.current.find((c) => c.conv.id === row.conversation_id)?.other;
+          const title = sender?.display_name || (sender ? formatPhone(sender.phone) : "Connected");
+          const body = row.body || (row.attachment_type?.startsWith("image/") ? "📷 Foto" : `📎 ${row.attachment_name ?? "Archivo"}`);
+          toast(title, { description: body });
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            document.visibilityState !== "visible"
+          ) {
+            const n = new Notification(title, { body, tag: row.conversation_id, icon: "/favicon.ico" });
+            n.onclick = () => {
+              window.focus();
+              navigate({ search: { c: row.conversation_id } });
+              n.close();
+            };
+          }
+        }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "conversations" }, () => {
         qc.invalidateQueries({ queryKey: ["conversations", me] });
@@ -78,7 +101,22 @@ function ChatsPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [me, qc]);
+  }, [me, qc, navigate]);
+
+  async function enableNotifications() {
+    if (!("Notification" in window)) {
+      toast.error("Este navegador no admite notificaciones");
+      return;
+    }
+    if (window.top !== window.self) {
+      toast.info("Abre la app en su propia pestaña para activar las notificaciones");
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+    if (perm === "granted") toast.success("Notificaciones activadas");
+    else if (perm === "denied") toast.error("Notificaciones bloqueadas. Actívalas en la configuración del navegador.");
+  }
 
   // Presence: who is online
   useEffect(() => {
@@ -99,6 +137,7 @@ function ChatsPage() {
     };
   }, [me]);
 
+  convsRef.current = convs;
   const active = convs.find((c) => c.conv.id === activeId) ?? null;
   const filtered = convs.filter((c) => {
     const q = filter.toLowerCase();
@@ -126,6 +165,11 @@ function ChatsPage() {
             </div>
           </div>
           <div className="flex gap-1">
+            {notifPermission !== "granted" && notifPermission !== "unsupported" && (
+              <Button size="icon" variant="ghost" onClick={enableNotifications} aria-label="Activar notificaciones">
+                {notifPermission === "denied" ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
+              </Button>
+            )}
             <Button size="icon" variant="ghost" onClick={() => setNewOpen(true)} aria-label="Nuevo chat">
               <Plus className="h-5 w-5" />
             </Button>
