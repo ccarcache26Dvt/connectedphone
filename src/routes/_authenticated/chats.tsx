@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, Check, CheckCheck, FileText, LogOut, MessageCircle, Paperclip, Plus, Search, Send,
+  ArrowLeft, Bell, BellOff, Check, CheckCheck, FileText, LogOut, MessageCircle, Paperclip, Plus, Search, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -52,6 +52,10 @@ function ChatsPage() {
   const [online, setOnline] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() =>
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
+  );
+  const convsRef = useRef<ConversationItem[]>([]);
 
   const { data: myProfile } = useQuery({
     queryKey: ["profile", me],
