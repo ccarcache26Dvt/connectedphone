@@ -6,7 +6,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { normalizePhone, phoneToEmail } from "@/lib/phone";
+import { normalizePhone, phoneCountries, phoneToEmail } from "@/lib/phone";
+import { unlockEncryptionIdentity } from "@/lib/message-encryption";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -26,15 +34,28 @@ function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("NI");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    const p = normalizePhone(phone);
-    if (!p) { toast.error("Número inválido. Incluye el código de país, ej. +505 8888 1234"); return; }
-    if (password.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
+    const selectedCountry =
+      phoneCountries.find((entry) => entry.code === country) ?? phoneCountries[0];
+    const p = normalizePhone(mode === "up" ? `${selectedCountry.callingCode}${phone}` : phone);
+    if (!p) {
+      toast.error(
+        mode === "up"
+          ? "Número inválido. Verifica el número local y el prefijo seleccionado."
+          : "Número inválido. Incluye el código de país, ej. +505 8888 1234",
+      );
+      return;
+    }
+    if (password.length < 6) {
+      toast.error("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
     setLoading(true);
     const email = phoneToEmail(p);
     const { data, error } =
@@ -54,10 +75,25 @@ function AuthPage() {
           : /weak|easy to guess|pwned/i.test(error.message)
             ? "Esa contraseña es muy común y no es segura. Elige otra más única (mezcla letras, números y símbolos)."
             : error.message;
-      { toast.error(msg); return; }
+      {
+        toast.error(msg);
+        return;
+      }
     }
     if (!data.session) {
-      toast.error("Tu cuenta necesita confirmación antes de entrar. El registro por número aún no está habilitado.");
+      toast.error(
+        "Tu cuenta necesita confirmación antes de entrar. El registro por número aún no está habilitado.",
+      );
+      return;
+    }
+    try {
+      await unlockEncryptionIdentity(data.user.id, password);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo preparar el cifrado privado de tu cuenta.",
+      );
       return;
     }
     navigate({ to: "/chats", replace: true });
@@ -72,21 +108,70 @@ function AuthPage() {
           </span>
           Connected
         </Link>
-        <h1 className="text-2xl font-semibold">{mode === "in" ? "Bienvenido de vuelta" : "Crea tu cuenta"}</h1>
+        <h1 className="text-2xl font-semibold">
+          {mode === "in" ? "Bienvenido de vuelta" : "Crea tu cuenta"}
+        </h1>
         <form onSubmit={submit} className="mt-6 space-y-4">
           <div className="space-y-2">
             <Label htmlFor="phone">Número de teléfono</Label>
-            <Input id="phone" type="tel" placeholder="+505 8888 1234" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="tel" />
+            {mode === "up" ? (
+              <div className="flex gap-2">
+                <Select value={country} onValueChange={setCountry}>
+                  <SelectTrigger
+                    className="w-[145px] shrink-0"
+                    aria-label="Prefijo telefónico del país"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {phoneCountries.map((entry) => (
+                      <SelectItem key={entry.code} value={entry.code}>
+                        {entry.code} +{entry.callingCode}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="8888 1234"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/[^\d\s()-]/g, ""))}
+                  autoComplete="tel-national"
+                  aria-label="Número de teléfono sin prefijo"
+                />
+              </div>
+            ) : (
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+505 8888 1234"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
+              />
+            )}
           </div>
           {mode === "up" && (
             <div className="space-y-2">
               <Label htmlFor="name">Tu nombre</Label>
-              <Input id="name" placeholder="Carlos" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input
+                id="name"
+                placeholder="Carlos"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
           )}
           <div className="space-y-2">
             <Label htmlFor="pw">Contraseña</Label>
-            <Input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "in" ? "current-password" : "new-password"} />
+            <Input
+              id="pw"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === "in" ? "current-password" : "new-password"}
+            />
           </div>
           <Button type="submit" className="w-full" size="lg" disabled={loading}>
             {loading ? "Un momento…" : mode === "in" ? "Entrar" : "Registrarme"}
@@ -95,7 +180,27 @@ function AuthPage() {
         <Button
           variant="ghost"
           type="button"
-          onClick={() => setMode(mode === "in" ? "up" : "in")}
+          onClick={() => {
+            if (mode === "in") {
+              const digits = phone.replace(/\D/g, "");
+              const matched = phoneCountries
+                .filter((entry) => digits.startsWith(entry.callingCode))
+                .sort((a, b) => b.callingCode.length - a.callingCode.length)[0];
+              if (matched) {
+                setCountry(matched.code);
+                setPhone(digits.slice(matched.callingCode.length));
+              } else {
+                setPhone("");
+                setCountry("NI");
+              }
+              setMode("up");
+            } else {
+              const selectedCountry =
+                phoneCountries.find((entry) => entry.code === country) ?? phoneCountries[0];
+              setPhone(`+${selectedCountry.callingCode} ${phone}`);
+              setMode("in");
+            }
+          }}
           className="mt-6 w-full text-center text-sm text-muted-foreground hover:text-foreground"
         >
           {mode === "in" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Entra"}

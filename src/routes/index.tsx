@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MessageCircle, Phone, Image as ImageIcon, CheckCheck } from "lucide-react";
+import { MessageCircle, Phone, Image as ImageIcon, CheckCheck, Mic, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InstallPwaButton } from "@/components/install-pwa-button";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -8,7 +9,7 @@ export const Route = createFileRoute("/")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { title: "Connected — Mensajería por número de teléfono" },
-      { name: "description", content: "Mensajes privados 1 a 1 con tu número de teléfono. Fotos, archivos y visto en tiempo real." },
+      { name: "description", content: "      Mensajes privados 1 a 1 con tu número de teléfono. Chats cifrados, notas de voz y colores a tu gusto." },
       { property: "og:title", content: "Connected — Mensajería por número de teléfono" },
       { property: "og:description", content: "Mensajes privados 1 a 1 con tu número. Tus conversaciones siempre guardadas." },
     ],
@@ -26,9 +27,12 @@ function Index() {
           </span>
           Connected
         </div>
-        <Button asChild variant="ghost">
-          <Link to="/auth">Entrar</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <InstallPwaButton />
+          <Button asChild variant="ghost">
+            <Link to="/auth">Entrar</Link>
+          </Button>
+        </div>
       </header>
 
       <section className="mx-auto grid max-w-6xl gap-12 px-6 pb-24 pt-12 md:grid-cols-2 md:items-center">
@@ -50,7 +54,9 @@ function Index() {
           </div>
           <ul className="mt-10 grid gap-3 text-sm text-muted-foreground">
             <li className="flex items-center gap-3"><Phone className="h-4 w-4 text-primary" /> Inicia chats por número</li>
-            <li className="flex items-center gap-3"><ImageIcon className="h-4 w-4 text-primary" /> Envía fotos y archivos</li>
+            <li className="flex items-center gap-3"><ShieldCheck className="h-4 w-4 text-primary" /> Mensajes nuevos cifrados de extremo a extremo</li>
+            <li className="flex items-center gap-3"><ImageIcon className="h-4 w-4 text-primary" /> Envía fotos y archivos cifrados</li>
+            <li className="flex items-center gap-3"><Mic className="h-4 w-4 text-primary" /> Graba y envía notas de voz privadas</li>
             <li className="flex items-center gap-3"><CheckCheck className="h-4 w-4 text-primary" /> Visto, en línea y escribiendo…</li>
           </ul>
         </div>
