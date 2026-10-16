@@ -66,7 +66,7 @@ export const chatPalettes = [
   },
   {
     id: "black-gray",
-    name: "Negro y gris oscuro",
+    name: "Oscuro",
     primary: "#27272a",
     primaryForeground: "#f4f4f5",
     ring: "#71717a",

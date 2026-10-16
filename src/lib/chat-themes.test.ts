@@ -5,7 +5,7 @@ describe("chat color palettes", () => {
   it("includes the dark black and dark gray palette", () => {
     const palette = getChatPalette("black-gray");
 
-    expect(palette.name).toBe("Negro y gris oscuro");
+    expect(palette.name).toBe("Oscuro");
     expect(palette.background).toBe("#050505");
     expect(palette.primary).toBe("#27272a");
   });
@@ -14,7 +14,7 @@ describe("chat color palettes", () => {
     const palette = getChatPalette("black-green");
 
     expect(palette.id).toBe("black-gray");
-    expect(palette.name).toBe("Negro y gris oscuro");
+    expect(palette.name).toBe("Oscuro");
   });
 
   it("applies and restores dark surface colors when switching palettes", () => {
