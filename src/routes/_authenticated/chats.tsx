@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, Check, CheckCheck, FileText, LogOut, MessageCircle, Mic, Palette, Paperclip, Plus, Search, Send, ShieldAlert, ShieldCheck, Square,
+  ArrowLeft, Camera, Check, CheckCheck, FileText, LogOut, MessageCircle, Mic, Palette, Paperclip, Plus, Search, Send, ShieldAlert, ShieldCheck, Sparkles, Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -21,8 +21,22 @@ import {
 import { normalizePhone, formatPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { conversationKey, decryptFile, decryptPayload, encryptFile, encryptPayload } from "@/lib/message-encryption";
-import { applyChatPalette, chatPalettes, getChatPalette, type ChatPaletteId } from "@/lib/chat-themes";
+import { applyChatPalette, getChatPalette, type ChatPaletteId } from "@/lib/chat-themes";
 import { InstallPwaButton } from "@/components/install-pwa-button";
+import { CameraCaptureDialog } from "@/components/camera-capture-dialog";
+import { ChatCustomizerDialog } from "@/components/chat-customizer-dialog";
+import {
+  loadWallpaperConfig,
+  saveWallpaperConfig,
+  wallpaperPresets,
+  type ChatWallpaperConfig,
+} from "@/lib/chat-wallpaper";
+import {
+  isPwaInstalled,
+  isNotificationSupported,
+  requestPwaNotificationPermission,
+  showPwaSystemNotification,
+} from "@/lib/pwa-notifications";
 
 export const Route = createFileRoute("/_authenticated/chats")({
   validateSearch: z.object({ c: z.string().optional() }),
@@ -57,18 +71,25 @@ function ChatsPage() {
   const [newOpen, setNewOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteId, setPaletteId] = useState<ChatPaletteId>("violet");
+  const [wallpaper, setWallpaper] = useState<ChatWallpaperConfig>(() => loadWallpaperConfig(me));
 
   useEffect(() => {
     const saved = localStorage.getItem(`connected-chat-palette:${me}`);
     const selected = getChatPalette(saved ?? "violet");
     setPaletteId(selected.id);
     applyChatPalette(selected.id);
+    setWallpaper(loadWallpaperConfig(me));
   }, [me]);
 
   function choosePalette(id: ChatPaletteId) {
     setPaletteId(id);
     localStorage.setItem(`connected-chat-palette:${me}`, id);
     applyChatPalette(id);
+  }
+
+  function handleSaveWallpaper(cfg: ChatWallpaperConfig) {
+    setWallpaper(cfg);
+    saveWallpaperConfig(me, cfg);
   }
 
   const { data: myProfile } = useQuery({
@@ -82,12 +103,35 @@ function ChatsPage() {
 
   // Realtime: new / updated messages and conversations
   useEffect(() => {
+    // Si la app está instalada como PWA y las notificaciones no se han configurado aún, solicitar permiso
+    if (isPwaInstalled() && isNotificationSupported() && Notification.permission === "default") {
+      void requestPwaNotificationPermission();
+    }
+
     const ch = supabase
       .channel("db-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         const row = (payload.new ?? payload.old) as Message;
         qc.invalidateQueries({ queryKey: ["conversations", me] });
         if (row?.conversation_id) qc.invalidateQueries({ queryKey: ["messages", row.conversation_id] });
+
+        // Notificaciones nativas para la bandeja del teléfono:
+        // Solo caen si está instalada como PWA (si no está instalada, no se emite nada).
+        if (payload.eventType === "INSERT" && row && row.sender_id !== me && isPwaInstalled()) {
+          const isDocHidden = typeof document !== "undefined" && document.hidden;
+          const isDifferentConv = activeId !== row.conversation_id;
+          if (isDocHidden || isDifferentConv) {
+            const senderItem = convs.find((c) => c.conv.id === row.conversation_id);
+            const senderName =
+              senderItem?.other?.display_name ||
+              (senderItem?.other ? formatPhone(senderItem.other.phone) : "Connected");
+            void showPwaSystemNotification({
+              title: senderName,
+              body: row.attachment_path ? "Te envió una foto o archivo" : "Nuevo mensaje privado",
+              conversationId: row.conversation_id,
+            });
+          }
+        }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "conversations" }, () => {
         qc.invalidateQueries({ queryKey: ["conversations", me] });
@@ -96,7 +140,7 @@ function ChatsPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [me, qc, navigate]);
+  }, [me, qc, activeId, convs]);
 
   // Presence: who is online
   useEffect(() => {
@@ -123,6 +167,30 @@ function ChatsPage() {
     return !q || c.other?.display_name.toLowerCase().includes(q) || c.other?.phone.includes(q.replace(/\D/g, "") || "~");
   });
 
+  const emptyWallpaperStyle = useMemo<React.CSSProperties>(() => {
+    if (!wallpaper || wallpaper.mode === "none") return {};
+    if (wallpaper.mode === "custom" && wallpaper.customUrl) {
+      return {
+        backgroundImage: `url(${wallpaper.customUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        opacity: wallpaper.opacity ?? 0.35,
+        filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+      };
+    }
+    if (wallpaper.mode === "preset" && wallpaper.presetId) {
+      const preset = wallpaperPresets.find((p) => p.id === wallpaper.presetId);
+      if (preset) {
+        return {
+          ...preset.style,
+          opacity: wallpaper.opacity ?? 0.35,
+          filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+        };
+      }
+    }
+    return {};
+  }, [wallpaper]);
+
   async function signOut() {
     await qc.cancelQueries();
     qc.clear();
@@ -144,7 +212,13 @@ function ChatsPage() {
             </div>
           </div>
           <div className="flex gap-1">
-            <Button size="icon" variant="ghost" onClick={() => setPaletteOpen(true)} aria-label="Cambiar colores del chat">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Personalizar fondo, colores y notificaciones"
+              title="Personalizar fondo, colores y notificaciones"
+            >
               <Palette className="h-5 w-5" />
             </Button>
             <InstallPwaButton />
@@ -193,14 +267,24 @@ function ChatsPage() {
             me={me}
             online={!!active.other && online.has(active.other.id)}
             onBack={() => navigate({ search: {} })}
+            wallpaper={wallpaper}
+            onOpenCustomizer={() => setPaletteOpen(true)}
           />
         ) : (
-          <div className="chat-canvas flex h-full w-full flex-col items-center justify-center gap-4 text-center">
-            <span className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <MessageCircle className="h-8 w-8" />
-            </span>
-            <h2 className="text-2xl font-semibold">Connected</h2>
-            <p className="max-w-xs text-sm text-muted-foreground">Elige una conversación o inicia una nueva con un número de teléfono.</p>
+          <div className="relative flex h-full w-full flex-col items-center justify-center gap-4 text-center overflow-hidden">
+            {wallpaper.mode !== "none" && (
+              <div
+                className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-300"
+                style={emptyWallpaperStyle}
+              />
+            )}
+            <div className={cn("relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 text-center", wallpaper.mode === "none" && "chat-canvas")}>
+              <span className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+                <MessageCircle className="h-8 w-8" />
+              </span>
+              <h2 className="text-2xl font-semibold">Connected</h2>
+              <p className="max-w-xs text-sm text-muted-foreground">Elige una conversación o inicia una nueva con un número de teléfono.</p>
+            </div>
           </div>
         )}
       </section>
@@ -214,33 +298,18 @@ function ChatsPage() {
           navigate({ search: { c: id } });
         }}
       />
-      <Dialog open={paletteOpen} onOpenChange={setPaletteOpen}>
-        <DialogContent className="bg-panel">
-          <DialogHeader>
-            <DialogTitle>Colores del chat</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            {chatPalettes.map((palette) => (
-              <Button
-                key={palette.id}
-                variant="outline"
-                className={cn("h-auto justify-start gap-3 py-3", paletteId === palette.id && "border-primary")}
-                onClick={() => choosePalette(palette.id)}
-              >
-                <span className="flex -space-x-1">
-                  <span className="h-5 w-5 rounded-full border-2 border-panel" style={{ backgroundColor: palette.primary }} />
-                  <span className="h-5 w-5 rounded-full border-2 border-panel" style={{ backgroundColor: palette.bubbleOut }} />
-                  <span className="h-5 w-5 rounded-full border-2 border-panel" style={{ backgroundColor: palette.bubbleIn }} />
-                </span>
-                {palette.name}
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ChatCustomizerDialog
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        paletteId={paletteId}
+        onSelectPalette={choosePalette}
+        wallpaper={wallpaper}
+        onSaveWallpaper={handleSaveWallpaper}
+      />
     </div>
   );
 }
+
 
 function Avatar({ name, online, size = "md" }: { name: string; online?: boolean; size?: "md" | "sm" }) {
   return (
@@ -312,7 +381,21 @@ const encryptedMessageSchema = z.discriminatedUnion("kind", [
   voiceMessageSchema,
 ]);
 
-function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: string; online: boolean; onBack: () => void }) {
+function ChatPanel({
+  item,
+  me,
+  online,
+  onBack,
+  wallpaper,
+  onOpenCustomizer,
+}: {
+  item: ConversationItem;
+  me: string;
+  online: boolean;
+  onBack: () => void;
+  wallpaper: ChatWallpaperConfig;
+  onOpenCustomizer: () => void;
+}) {
   const convId = item.conv.id;
   const other = item.other;
   const name = other?.display_name || (other ? formatPhone(other.phone) : "Usuario");
@@ -321,6 +404,7 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
   const [typing, setTyping] = useState(false);
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([]);
   const [chatKey, setChatKey] = useState<CryptoKey | null>(null);
   const [encryptionError, setEncryptionError] = useState("");
@@ -584,9 +668,41 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
     return out;
   }, [displayMessages]);
 
+  const wallpaperStyle = useMemo<React.CSSProperties>(() => {
+    if (!wallpaper || wallpaper.mode === "none") return {};
+    if (wallpaper.mode === "custom" && wallpaper.customUrl) {
+      return {
+        backgroundImage: `url(${wallpaper.customUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        opacity: wallpaper.opacity ?? 0.35,
+        filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+      };
+    }
+    if (wallpaper.mode === "preset" && wallpaper.presetId) {
+      const preset = wallpaperPresets.find((p) => p.id === wallpaper.presetId);
+      if (preset) {
+        return {
+          ...preset.style,
+          opacity: wallpaper.opacity ?? 0.35,
+          filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+        };
+      }
+    }
+    return {};
+  }, [wallpaper]);
+
   return (
-    <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-3 border-b bg-panel px-4 py-3">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
+      {/* Capa de fondo personalizado */}
+      {wallpaper && wallpaper.mode !== "none" && (
+        <div
+          className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-300"
+          style={wallpaperStyle}
+        />
+      )}
+
+      <header className="relative z-10 flex items-center gap-3 border-b bg-panel/95 backdrop-blur px-4 py-3">
         <Button size="icon" variant="ghost" className="md:hidden" onClick={onBack} aria-label="Volver">
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -597,13 +713,25 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
             {typing ? "escribiendo…" : online ? "en línea" : other ? lastSeenLabel(other) : ""}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground" title="Cifrado de extremo a extremo">
-          <ShieldCheck className="h-4 w-4 text-online" />
-          <span className="hidden sm:inline">Cifrado</span>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onOpenCustomizer}
+            aria-label="Personalizar fondo y colores"
+            title="Personalizar fondo y colores"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Sparkles className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Cifrado de extremo a extremo">
+            <ShieldCheck className="h-4 w-4 text-online" />
+            <span className="hidden sm:inline">Cifrado</span>
+          </div>
         </div>
       </header>
 
-      <div className="chat-canvas flex-1 overflow-y-auto px-4 py-6 md:px-10">
+      <div className={cn("relative z-10 flex-1 overflow-y-auto px-4 py-6 md:px-10", wallpaper.mode === "none" ? "chat-canvas" : "bg-transparent")}>
         {messages.some((message) => message.encryption_version === 0) && (
           <div className="mx-auto mb-5 flex max-w-2xl items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
@@ -635,7 +763,7 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} className="flex items-center gap-2 border-t bg-panel px-3 py-3">
+      <form onSubmit={send} className="relative z-10 flex items-center gap-2 border-t bg-panel/95 backdrop-blur px-3 py-3">
         <input
           ref={fileRef}
           type="file"
@@ -646,8 +774,27 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
             e.target.value = "";
           }}
         />
-        <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} disabled={sending} aria-label="Adjuntar">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => fileRef.current?.click()}
+          disabled={sending}
+          aria-label="Adjuntar archivo"
+          title="Adjuntar archivo"
+        >
           <Paperclip className="h-5 w-5" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => setCameraOpen(true)}
+          disabled={sending || !chatKey}
+          aria-label="Tomar foto con la cámara"
+          title="Tomar foto con la cámara"
+        >
+          <Camera className="h-5 w-5" />
         </Button>
         <Button
           type="button"
@@ -670,9 +817,16 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
           <Send className="h-5 w-5" />
         </Button>
       </form>
+
+      <CameraCaptureDialog
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onCapture={(file) => void sendFile(file, "attachment")}
+      />
     </div>
   );
 }
+
 
 function lastSeenLabel(p: Profile) {
   return `últ. vez ${formatDistanceToNow(new Date(p.last_seen), { addSuffix: true, locale: es })}`;
