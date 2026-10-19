@@ -47,7 +47,6 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
-          encryption_version: number
           read_at: string | null
           sender_id: string
         }
@@ -59,7 +58,6 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
-          encryption_version?: number
           read_at?: string | null
           sender_id: string
         }
@@ -71,7 +69,6 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
-          encryption_version?: number
           read_at?: string | null
           sender_id?: string
         }
@@ -92,7 +89,6 @@ export type Database = {
           id: string
           last_seen: string
           phone: string
-          public_key: string | null
         }
         Insert: {
           created_at?: string
@@ -100,7 +96,6 @@ export type Database = {
           id: string
           last_seen?: string
           phone: string
-          public_key?: string | null
         }
         Update: {
           created_at?: string
@@ -108,28 +103,6 @@ export type Database = {
           id?: string
           last_seen?: string
           phone?: string
-          public_key?: string | null
-        }
-        Relationships: []
-      }
-      user_encryption_keys: {
-        Row: {
-          encrypted_private_key: string
-          encryption_iv: string
-          encryption_salt: string
-          user_id: string
-        }
-        Insert: {
-          encrypted_private_key: string
-          encryption_iv: string
-          encryption_salt: string
-          user_id: string
-        }
-        Update: {
-          encrypted_private_key?: string
-          encryption_iv?: string
-          encryption_salt?: string
-          user_id?: string
         }
         Relationships: []
       }
