@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "Connected — Mensajería privada",
+  "short_name": "Connected",
+  "description": "Mensajería privada con cifrado de extremo a extremo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111014",
+  "theme_color": "#111014",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

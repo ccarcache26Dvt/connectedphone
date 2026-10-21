@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, Bell, BellOff, Check, CheckCheck, FileText, LogOut, MessageCircle, Paperclip, Plus, Search, Send,
+  ArrowLeft, Camera, Check, CheckCheck, FileText, LogOut, MessageCircle, Mic, Palette, Paperclip, Plus, Search, Send, ShieldAlert, ShieldCheck, Sparkles, Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -20,6 +20,23 @@ import {
 } from "@/lib/chat-data";
 import { normalizePhone, formatPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
+import { conversationKey, decryptFile, decryptPayload, encryptFile, encryptPayload } from "@/lib/message-encryption";
+import { applyChatPalette, getChatPalette, type ChatPaletteId } from "@/lib/chat-themes";
+import { InstallPwaButton } from "@/components/install-pwa-button";
+import { CameraCaptureDialog } from "@/components/camera-capture-dialog";
+import { ChatCustomizerDialog } from "@/components/chat-customizer-dialog";
+import {
+  loadWallpaperConfig,
+  saveWallpaperConfig,
+  wallpaperPresets,
+  type ChatWallpaperConfig,
+} from "@/lib/chat-wallpaper";
+import {
+  isPwaInstalled,
+  isNotificationSupported,
+  requestPwaNotificationPermission,
+  showPwaSystemNotification,
+} from "@/lib/pwa-notifications";
 
 export const Route = createFileRoute("/_authenticated/chats")({
   validateSearch: z.object({ c: z.string().optional() }),
@@ -52,10 +69,28 @@ function ChatsPage() {
   const [online, setOnline] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [newOpen, setNewOpen] = useState(false);
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(() =>
-    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
-  );
-  const convsRef = useRef<ConversationItem[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteId, setPaletteId] = useState<ChatPaletteId>("violet");
+  const [wallpaper, setWallpaper] = useState<ChatWallpaperConfig>(() => loadWallpaperConfig(me));
+
+  useEffect(() => {
+    const saved = localStorage.getItem(`connected-chat-palette:${me}`);
+    const selected = getChatPalette(saved ?? "violet");
+    setPaletteId(selected.id);
+    applyChatPalette(selected.id);
+    setWallpaper(loadWallpaperConfig(me));
+  }, [me]);
+
+  function choosePalette(id: ChatPaletteId) {
+    setPaletteId(id);
+    localStorage.setItem(`connected-chat-palette:${me}`, id);
+    applyChatPalette(id);
+  }
+
+  function handleSaveWallpaper(cfg: ChatWallpaperConfig) {
+    setWallpaper(cfg);
+    saveWallpaperConfig(me, cfg);
+  }
 
   const { data: myProfile } = useQuery({
     queryKey: ["profile", me],
@@ -68,29 +103,33 @@ function ChatsPage() {
 
   // Realtime: new / updated messages and conversations
   useEffect(() => {
+    // Si la app está instalada como PWA y las notificaciones no se han configurado aún, solicitar permiso
+    if (isPwaInstalled() && isNotificationSupported() && Notification.permission === "default") {
+      void requestPwaNotificationPermission();
+    }
+
     const ch = supabase
       .channel("db-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         const row = (payload.new ?? payload.old) as Message;
         qc.invalidateQueries({ queryKey: ["conversations", me] });
         if (row?.conversation_id) qc.invalidateQueries({ queryKey: ["messages", row.conversation_id] });
-        // Notify on incoming messages
-        if (payload.eventType === "INSERT" && row?.sender_id && row.sender_id !== me) {
-          const sender = convsRef.current.find((c) => c.conv.id === row.conversation_id)?.other;
-          const title = sender?.display_name || (sender ? formatPhone(sender.phone) : "Connected");
-          const body = row.body || (row.attachment_type?.startsWith("image/") ? "📷 Foto" : `📎 ${row.attachment_name ?? "Archivo"}`);
-          toast(title, { description: body });
-          if (
-            "Notification" in window &&
-            Notification.permission === "granted" &&
-            document.visibilityState !== "visible"
-          ) {
-            const n = new Notification(title, { body, tag: row.conversation_id, icon: "/favicon.ico" });
-            n.onclick = () => {
-              window.focus();
-              navigate({ search: { c: row.conversation_id } });
-              n.close();
-            };
+
+        // Notificaciones nativas para la bandeja del teléfono:
+        // Solo caen si está instalada como PWA (si no está instalada, no se emite nada).
+        if (payload.eventType === "INSERT" && row && row.sender_id !== me && isPwaInstalled()) {
+          const isDocHidden = typeof document !== "undefined" && document.hidden;
+          const isDifferentConv = activeId !== row.conversation_id;
+          if (isDocHidden || isDifferentConv) {
+            const senderItem = convs.find((c) => c.conv.id === row.conversation_id);
+            const senderName =
+              senderItem?.other?.display_name ||
+              (senderItem?.other ? formatPhone(senderItem.other.phone) : "Connected");
+            void showPwaSystemNotification({
+              title: senderName,
+              body: row.attachment_path ? "Te envió una foto o archivo" : "Nuevo mensaje privado",
+              conversationId: row.conversation_id,
+            });
           }
         }
       })
@@ -101,22 +140,7 @@ function ChatsPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [me, qc, navigate]);
-
-  async function enableNotifications() {
-    if (!("Notification" in window)) {
-      toast.error("Este navegador no admite notificaciones");
-      return;
-    }
-    if (window.top !== window.self) {
-      toast.info("Abre la app en su propia pestaña para activar las notificaciones");
-      return;
-    }
-    const perm = await Notification.requestPermission();
-    setNotifPermission(perm);
-    if (perm === "granted") toast.success("Notificaciones activadas");
-    else if (perm === "denied") toast.error("Notificaciones bloqueadas. Actívalas en la configuración del navegador.");
-  }
+  }, [me, qc, activeId, convs]);
 
   // Presence: who is online
   useEffect(() => {
@@ -137,12 +161,35 @@ function ChatsPage() {
     };
   }, [me]);
 
-  convsRef.current = convs;
   const active = convs.find((c) => c.conv.id === activeId) ?? null;
   const filtered = convs.filter((c) => {
     const q = filter.toLowerCase();
     return !q || c.other?.display_name.toLowerCase().includes(q) || c.other?.phone.includes(q.replace(/\D/g, "") || "~");
   });
+
+  const emptyWallpaperStyle = useMemo<React.CSSProperties>(() => {
+    if (!wallpaper || wallpaper.mode === "none") return {};
+    if (wallpaper.mode === "custom" && wallpaper.customUrl) {
+      return {
+        backgroundImage: `url(${wallpaper.customUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        opacity: wallpaper.opacity ?? 0.35,
+        filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+      };
+    }
+    if (wallpaper.mode === "preset" && wallpaper.presetId) {
+      const preset = wallpaperPresets.find((p) => p.id === wallpaper.presetId);
+      if (preset) {
+        return {
+          ...preset.style,
+          opacity: wallpaper.opacity ?? 0.35,
+          filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+        };
+      }
+    }
+    return {};
+  }, [wallpaper]);
 
   async function signOut() {
     await qc.cancelQueries();
@@ -165,11 +212,16 @@ function ChatsPage() {
             </div>
           </div>
           <div className="flex gap-1">
-            {notifPermission !== "granted" && notifPermission !== "unsupported" && (
-              <Button size="icon" variant="ghost" onClick={enableNotifications} aria-label="Activar notificaciones">
-                {notifPermission === "denied" ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
-              </Button>
-            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Personalizar fondo, colores y notificaciones"
+              title="Personalizar fondo, colores y notificaciones"
+            >
+              <Palette className="h-5 w-5" />
+            </Button>
+            <InstallPwaButton />
             <Button size="icon" variant="ghost" onClick={() => setNewOpen(true)} aria-label="Nuevo chat">
               <Plus className="h-5 w-5" />
             </Button>
@@ -215,14 +267,24 @@ function ChatsPage() {
             me={me}
             online={!!active.other && online.has(active.other.id)}
             onBack={() => navigate({ search: {} })}
+            wallpaper={wallpaper}
+            onOpenCustomizer={() => setPaletteOpen(true)}
           />
         ) : (
-          <div className="chat-canvas flex h-full w-full flex-col items-center justify-center gap-4 text-center">
-            <span className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground">
-              <MessageCircle className="h-8 w-8" />
-            </span>
-            <h2 className="text-2xl font-semibold">Connected</h2>
-            <p className="max-w-xs text-sm text-muted-foreground">Elige una conversación o inicia una nueva con un número de teléfono.</p>
+          <div className="relative flex h-full w-full flex-col items-center justify-center gap-4 text-center overflow-hidden">
+            {wallpaper.mode !== "none" && (
+              <div
+                className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-300"
+                style={emptyWallpaperStyle}
+              />
+            )}
+            <div className={cn("relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 text-center", wallpaper.mode === "none" && "chat-canvas")}>
+              <span className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+                <MessageCircle className="h-8 w-8" />
+              </span>
+              <h2 className="text-2xl font-semibold">Connected</h2>
+              <p className="max-w-xs text-sm text-muted-foreground">Elige una conversación o inicia una nueva con un número de teléfono.</p>
+            </div>
           </div>
         )}
       </section>
@@ -236,9 +298,18 @@ function ChatsPage() {
           navigate({ search: { c: id } });
         }}
       />
+      <ChatCustomizerDialog
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        paletteId={paletteId}
+        onSelectPalette={choosePalette}
+        wallpaper={wallpaper}
+        onSaveWallpaper={handleSaveWallpaper}
+      />
     </div>
   );
 }
+
 
 function Avatar({ name, online, size = "md" }: { name: string; online?: boolean; size?: "md" | "sm" }) {
   return (
@@ -254,7 +325,11 @@ function Avatar({ name, online, size = "md" }: { name: string; online?: boolean;
 function ConvRow({ item, me, active, online, onClick }: { item: ConversationItem; me: string; active: boolean; online: boolean; onClick: () => void }) {
   const name = item.other?.display_name || (item.other ? formatPhone(item.other.phone) : "Usuario");
   const last = item.last;
-  const preview = last ? (last.body || (last.attachment_type?.startsWith("image/") ? "📷 Foto" : `📎 ${last.attachment_name ?? "Archivo"}`)) : "Nuevo chat";
+  const preview = last
+    ? last.encryption_version > 0
+      ? last.attachment_path ? "🔒 Mensaje cifrado" : "🔒 Mensaje privado"
+      : "🔒 Historial anterior (sin cifrar)"
+    : "Nuevo chat";
   return (
     <Button variant="ghost" onClick={onClick} className={cn("flex h-auto w-full justify-start whitespace-normal rounded-none items-center gap-3 px-4 py-3 text-left", active && "bg-accent")}>
       <Avatar name={name} online={online} />
@@ -281,7 +356,46 @@ function Ticks({ read }: { read: boolean }) {
   return read ? <CheckCheck className="h-4 w-4 shrink-0 text-read" /> : <Check className="h-4 w-4 shrink-0 opacity-70" />;
 }
 
-function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: string; online: boolean; onBack: () => void }) {
+type DisplayMessage = Message & {
+  legacyHistory?: boolean;
+  decryptError?: boolean;
+  fileIv?: string;
+};
+
+const textMessageSchema = z.object({ kind: z.literal("text"), text: z.string() });
+const attachmentMessageSchema = z.object({
+  kind: z.literal("attachment"),
+  name: z.string(),
+  mime: z.string(),
+  iv: z.string(),
+});
+const voiceMessageSchema = z.object({
+  kind: z.literal("voice"),
+  name: z.string(),
+  mime: z.string(),
+  iv: z.string(),
+});
+const encryptedMessageSchema = z.discriminatedUnion("kind", [
+  textMessageSchema,
+  attachmentMessageSchema,
+  voiceMessageSchema,
+]);
+
+function ChatPanel({
+  item,
+  me,
+  online,
+  onBack,
+  wallpaper,
+  onOpenCustomizer,
+}: {
+  item: ConversationItem;
+  me: string;
+  online: boolean;
+  onBack: () => void;
+  wallpaper: ChatWallpaperConfig;
+  onOpenCustomizer: () => void;
+}) {
   const convId = item.conv.id;
   const other = item.other;
   const name = other?.display_name || (other ? formatPhone(other.phone) : "Usuario");
@@ -289,12 +403,107 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
   const [text, setText] = useState("");
   const [typing, setTyping] = useState(false);
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([]);
+  const [chatKey, setChatKey] = useState<CryptoKey | null>(null);
+  const [encryptionError, setEncryptionError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const discardRecordingRef = useRef(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSent = useRef(0);
 
   const { data: messages = [] } = useQuery({ queryKey: ["messages", convId], queryFn: () => fetchMessages(convId) });
+  const peerId = other?.id;
+  const peerEncryptionProfile = useQuery({
+    queryKey: ["encryption-profile", peerId],
+    enabled: !!peerId,
+    queryFn: async () => {
+      if (!peerId) throw new Error("Falta el identificador del contacto.");
+      const { data, error } = await supabase.from("profiles").select("public_key").eq("id", peerId).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const peerPublicKey = peerEncryptionProfile.data
+    ? peerEncryptionProfile.data.public_key
+    : (other?.public_key ?? null);
+
+  useEffect(() => {
+    if (!peerId) return;
+    const channel = supabase
+      .channel(`encryption-profile:${peerId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${peerId}` }, () => {
+        void qc.invalidateQueries({ queryKey: ["encryption-profile", peerId] });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [peerId, qc]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setChatKey(null);
+    if (peerEncryptionProfile.error) {
+      setEncryptionError("No se pudo verificar la clave pública de la otra persona.");
+      return;
+    }
+    if (!peerPublicKey) {
+      setEncryptionError("El cifrado estará disponible cuando la otra persona inicie sesión en Connected.");
+      return;
+    }
+    setEncryptionError("");
+    conversationKey(me, convId, peerPublicKey)
+      .then((key) => {
+        if (!cancelled) setChatKey(key);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setEncryptionError(error instanceof Error ? error.message : "No se pudo iniciar el cifrado privado.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [me, convId, peerPublicKey, peerEncryptionProfile.error]);
+
+  useEffect(() => {
+    const legacyAndHidden = messages.map((message) =>
+      message.encryption_version === 0
+        ? { ...message, legacyHistory: true }
+        : { ...message, body: null, attachment_name: null, attachment_type: null },
+    );
+    setDisplayMessages(legacyAndHidden);
+    if (!chatKey) return;
+    let cancelled = false;
+    Promise.all(
+      messages.map(async (message): Promise<DisplayMessage> => {
+        if (message.encryption_version === 0 || !message.body) return message;
+        try {
+          const parsed = encryptedMessageSchema.safeParse(JSON.parse(await decryptPayload(message.body, chatKey)));
+          if (!parsed.success) throw new Error("El contenido privado tiene un formato no reconocido.");
+          if (parsed.data.kind === "text") return { ...message, body: parsed.data.text };
+          return {
+            ...message,
+            body: null,
+            attachment_name: parsed.data.name,
+            attachment_type: parsed.data.mime,
+            fileIv: parsed.data.iv,
+          };
+        } catch (error) {
+          console.error("No se pudo descifrar un mensaje", { messageId: message.id, error });
+          return { ...message, body: null, decryptError: true };
+        }
+      }),
+    ).then((result) => {
+      if (!cancelled) setDisplayMessages(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [messages, chatKey]);
 
   // Typing indicator
   useEffect(() => {
@@ -326,7 +535,13 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, typing]);
+  }, [displayMessages.length, typing]);
+
+  useEffect(() => () => {
+    discardRecordingRef.current = true;
+    recorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   function onType(v: string) {
     setText(v);
@@ -341,49 +556,153 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
     e?.preventDefault();
     const body = text.trim();
     if (!body) return;
+    if (!chatKey) { toast.error(encryptionError || "No se pudo iniciar el cifrado privado."); return; }
     setSending(true);
-    const { error } = await supabase.from("messages").insert({ conversation_id: convId, sender_id: me, body });
-    setSending(false);
-    if (error) { toast.error("No se pudo enviar. Tu mensaje sigue aquí para reintentar."); return; }
-    setText("");
-    qc.invalidateQueries({ queryKey: ["messages", convId] });
-    qc.invalidateQueries({ queryKey: ["conversations", me] });
+    try {
+      const encryptedBody = await encryptPayload(JSON.stringify({ kind: "text", text: body }), chatKey);
+      const { error } = await supabase.from("messages").insert({
+        conversation_id: convId,
+        sender_id: me,
+        body: encryptedBody,
+        encryption_version: 1,
+      });
+      if (error) throw error;
+      setText("");
+      qc.invalidateQueries({ queryKey: ["messages", convId] });
+      qc.invalidateQueries({ queryKey: ["conversations", me] });
+    } catch (error) {
+      toast.error(error instanceof Error ? `No se pudo enviar el mensaje cifrado: ${error.message}` : "No se pudo enviar el mensaje cifrado.");
+    } finally {
+      setSending(false);
+    }
   }
 
-  async function sendFile(file: File): Promise<void> {
+  async function sendFile(file: File, kind: "attachment" | "voice" = "attachment"): Promise<void> {
     if (file.size > 20 * 1024 * 1024) { toast.error("Máximo 20 MB por archivo"); return; }
+    if (!chatKey) { toast.error(encryptionError || "No se pudo iniciar el cifrado privado."); return; }
     setSending(true);
-    const safe = file.name.replace(/[^\w.-]/g, "_");
-    const path = `${convId}/${crypto.randomUUID()}-${safe}`;
-    const up = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type });
-    if (up.error) {
+    try {
+      const encryptedFile = await encryptFile(file, chatKey);
+      const encryptedBody = await encryptPayload(JSON.stringify({
+        kind,
+        name: kind === "voice" ? "Nota de voz" : file.name,
+        mime: file.type || "application/octet-stream",
+        iv: encryptedFile.iv,
+      }), chatKey);
+      const path = `${convId}/${crypto.randomUUID()}.enc`;
+      const { error: uploadError } = await supabase.storage
+        .from("attachments")
+        .upload(path, new Blob([encryptedFile.data], { type: "application/octet-stream" }), { contentType: "application/octet-stream" });
+      if (uploadError) throw uploadError;
+      const { error } = await supabase.from("messages").insert({
+        conversation_id: convId,
+        sender_id: me,
+        body: encryptedBody,
+        attachment_path: path,
+        attachment_type: "application/octet-stream",
+        attachment_name: null,
+        encryption_version: 1,
+      });
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["messages", convId] });
+      qc.invalidateQueries({ queryKey: ["conversations", me] });
+    } catch (error) {
+      toast.error(error instanceof Error ? `No se pudo enviar el archivo cifrado: ${error.message}` : "No se pudo enviar el archivo cifrado.");
+    } finally {
       setSending(false);
-      { toast.error("No se pudo subir el archivo"); return; }
     }
-    const { error } = await supabase.from("messages").insert({
-      conversation_id: convId, sender_id: me, attachment_path: path,
-      attachment_type: file.type || "application/octet-stream", attachment_name: file.name,
-    });
-    setSending(false);
-    if (error) { toast.error("El archivo no se pudo enviar. Inténtalo de nuevo."); return; }
-    qc.invalidateQueries({ queryKey: ["messages", convId] });
-    qc.invalidateQueries({ queryKey: ["conversations", me] });
+  }
+
+  async function toggleRecording() {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (!chatKey) { toast.error(encryptionError || "No se pudo iniciar el cifrado privado."); return; }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast.error("Este navegador no permite grabar notas de voz.");
+      return;
+    }
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : undefined;
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        setRecording(false);
+        if (chunks.length && !discardRecordingRef.current) {
+          const type = recorder.mimeType || "audio/webm";
+          const extension = type.split("/")[1]?.split(";")[0] || "webm";
+          void sendFile(new File(chunks, `nota-de-voz.${extension}`, { type }), "voice");
+        }
+      };
+      recorderRef.current = recorder;
+      discardRecordingRef.current = false;
+      recorder.start();
+      setRecording(true);
+    } catch (error) {
+      stream?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      toast.error(error instanceof Error ? `No se pudo acceder al micrófono: ${error.message}` : "No se pudo acceder al micrófono.");
+    }
   }
 
   const grouped = useMemo(() => {
-    const out: { day: string; items: Message[] }[] = [];
-    for (const m of messages) {
+    const out: { day: string; items: DisplayMessage[] }[] = [];
+    for (const m of displayMessages) {
       const d = new Date(m.created_at);
       const day = isToday(d) ? "Hoy" : isYesterday(d) ? "Ayer" : format(d, "d 'de' MMMM yyyy", { locale: es });
       if (out.at(-1)?.day !== day) out.push({ day, items: [] });
       out.at(-1)?.items.push(m);
     }
     return out;
-  }, [messages]);
+  }, [displayMessages]);
+
+  const wallpaperStyle = useMemo<React.CSSProperties>(() => {
+    if (!wallpaper || wallpaper.mode === "none") return {};
+    if (wallpaper.mode === "custom" && wallpaper.customUrl) {
+      return {
+        backgroundImage: `url(${wallpaper.customUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        opacity: wallpaper.opacity ?? 0.35,
+        filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+      };
+    }
+    if (wallpaper.mode === "preset" && wallpaper.presetId) {
+      const preset = wallpaperPresets.find((p) => p.id === wallpaper.presetId);
+      if (preset) {
+        return {
+          ...preset.style,
+          opacity: wallpaper.opacity ?? 0.35,
+          filter: wallpaper.blur ? `blur(${wallpaper.blur}px)` : undefined,
+        };
+      }
+    }
+    return {};
+  }, [wallpaper]);
 
   return (
-    <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-3 border-b bg-panel px-4 py-3">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
+      {/* Capa de fondo personalizado */}
+      {wallpaper && wallpaper.mode !== "none" && (
+        <div
+          className="pointer-events-none absolute inset-0 z-0 transition-opacity duration-300"
+          style={wallpaperStyle}
+        />
+      )}
+
+      <header className="relative z-10 flex items-center gap-3 border-b bg-panel/95 backdrop-blur px-4 py-3">
         <Button size="icon" variant="ghost" className="md:hidden" onClick={onBack} aria-label="Volver">
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -394,16 +713,43 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
             {typing ? "escribiendo…" : online ? "en línea" : other ? lastSeenLabel(other) : ""}
           </div>
         </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onOpenCustomizer}
+            aria-label="Personalizar fondo y colores"
+            title="Personalizar fondo y colores"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Sparkles className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Cifrado de extremo a extremo">
+            <ShieldCheck className="h-4 w-4 text-online" />
+            <span className="hidden sm:inline">Cifrado</span>
+          </div>
+        </div>
       </header>
 
-      <div className="chat-canvas flex-1 overflow-y-auto px-4 py-6 md:px-10">
+      <div className={cn("relative z-10 flex-1 overflow-y-auto px-4 py-6 md:px-10", wallpaper.mode === "none" ? "chat-canvas" : "bg-transparent")}>
+        {messages.some((message) => message.encryption_version === 0) && (
+          <div className="mx-auto mb-5 flex max-w-2xl items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <span>El historial anterior a la activación del cifrado se conserva y está marcado; esos mensajes antiguos aún no están cifrados.</span>
+          </div>
+        )}
+        {encryptionError && (
+          <div className="mx-auto mb-5 max-w-2xl rounded-xl border border-border bg-panel p-3 text-sm text-muted-foreground">
+            {encryptionError}
+          </div>
+        )}
         {grouped.map((g) => (
           <div key={g.day} className="space-y-1.5">
             <div className="sticky top-0 z-10 my-4 flex justify-center">
               <span className="rounded-full bg-panel px-3 py-1 text-xs text-muted-foreground shadow">{g.day}</span>
             </div>
             {g.items.map((m) => (
-              <Bubble key={m.id} m={m} mine={m.sender_id === me} />
+              <Bubble key={m.id} m={m} mine={m.sender_id === me} chatKey={chatKey} />
             ))}
           </div>
         ))}
@@ -417,7 +763,7 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} className="flex items-center gap-2 border-t bg-panel px-3 py-3">
+      <form onSubmit={send} className="relative z-10 flex items-center gap-2 border-t bg-panel/95 backdrop-blur px-3 py-3">
         <input
           ref={fileRef}
           type="file"
@@ -428,28 +774,65 @@ function ChatPanel({ item, me, online, onBack }: { item: ConversationItem; me: s
             e.target.value = "";
           }}
         />
-        <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} disabled={sending} aria-label="Adjuntar">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => fileRef.current?.click()}
+          disabled={sending}
+          aria-label="Adjuntar archivo"
+          title="Adjuntar archivo"
+        >
           <Paperclip className="h-5 w-5" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => setCameraOpen(true)}
+          disabled={sending || !chatKey}
+          aria-label="Tomar foto con la cámara"
+          title="Tomar foto con la cámara"
+        >
+          <Camera className="h-5 w-5" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant={recording ? "destructive" : "ghost"}
+          onClick={toggleRecording}
+          disabled={sending || !chatKey}
+          aria-label={recording ? "Detener nota de voz" : "Grabar nota de voz"}
+          title={recording ? "Detener grabación" : "Grabar nota de voz"}
+        >
+          {recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
         </Button>
         <Input
           value={text}
           onChange={(e) => onType(e.target.value)}
-          placeholder={sending ? "Subiendo archivo…" : "Escribe un mensaje"}
+          placeholder={recording ? "Grabando nota de voz…" : sending ? "Cifrando y enviando…" : "Escribe un mensaje"}
           className="h-11 rounded-full"
         />
-        <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={sending || !text.trim()} aria-label="Enviar">
+        <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={sending || !text.trim() || !chatKey} aria-label="Enviar">
           <Send className="h-5 w-5" />
         </Button>
       </form>
+
+      <CameraCaptureDialog
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onCapture={(file) => void sendFile(file, "attachment")}
+      />
     </div>
   );
 }
+
 
 function lastSeenLabel(p: Profile) {
   return `últ. vez ${formatDistanceToNow(new Date(p.last_seen), { addSuffix: true, locale: es })}`;
 }
 
-function Bubble({ m, mine }: { m: Message; mine: boolean }) {
+function Bubble({ m, mine, chatKey }: { m: DisplayMessage; mine: boolean; chatKey: CryptoKey | null }) {
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
@@ -458,7 +841,23 @@ function Bubble({ m, mine }: { m: Message; mine: boolean }) {
           mine ? "rounded-br-sm bg-bubble-out text-bubble-out-foreground" : "rounded-bl-sm bg-bubble-in text-bubble-in-foreground",
         )}
       >
-        {m.attachment_path && <Attachment m={m} />}
+        {m.legacyHistory && (
+          <div className="mb-1 flex items-center gap-1 text-[10px] text-amber-500" title="Este mensaje se guardó antes de activar el cifrado">
+            <ShieldAlert className="h-3 w-3" />
+            Historial anterior sin cifrar
+          </div>
+        )}
+        {m.attachment_path && m.encryption_version === 0 && <Attachment m={m} chatKey={chatKey} />}
+        {m.attachment_path && m.encryption_version > 0 && m.fileIv && !m.decryptError && (
+          <Attachment m={m} chatKey={chatKey} />
+        )}
+        {m.attachment_path && m.encryption_version > 0 && !m.fileIv && !m.decryptError && (
+          <p className="text-sm italic text-muted-foreground">Archivo cifrado; esperando la clave privada.</p>
+        )}
+        {m.decryptError && <p className="text-sm italic text-muted-foreground">No se pudo descifrar este mensaje.</p>}
+        {m.encryption_version > 0 && !m.body && !m.attachment_path && !m.decryptError && (
+          <p className="text-sm italic text-muted-foreground">Mensaje cifrado; esperando la clave privada.</p>
+        )}
         {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
         <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-70">
           {format(new Date(m.created_at), "HH:mm")}
@@ -469,7 +868,7 @@ function Bubble({ m, mine }: { m: Message; mine: boolean }) {
   );
 }
 
-function Attachment({ m }: { m: Message }) {
+function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | null }) {
   const { data: url } = useQuery({
     queryKey: ["signed", m.attachment_path],
     staleTime: 50 * 60 * 1000,
@@ -480,17 +879,61 @@ function Attachment({ m }: { m: Message }) {
       return data?.signedUrl ?? null;
     },
   });
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    if (!url) {
+      setMediaUrl(null);
+      return;
+    }
+    if (m.encryption_version === 0) {
+      setMediaUrl(url);
+      return;
+    }
+    const fileIv = m.fileIv;
+    const attachmentType = m.attachment_type;
+    if (!chatKey || !fileIv || !attachmentType) {
+      setMediaUrl(null);
+      return;
+    }
+    fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`No se pudo descargar el archivo (${response.status}).`);
+        return response.arrayBuffer();
+      })
+      .then((encrypted) => decryptFile(encrypted, fileIv, chatKey))
+      .then((decrypted) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(new Blob([decrypted], { type: attachmentType }));
+        setMediaUrl(objectUrl);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "No se pudo descifrar el archivo.");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url, m.encryption_version, m.fileIv, m.attachment_type, chatKey]);
+
+  if (m.attachment_type?.startsWith("audio/")) {
+    return mediaUrl
+      ? <audio controls preload="metadata" src={mediaUrl} className="mb-1 max-w-full" aria-label="Nota de voz" />
+      : <div className="mb-1 h-10 w-56 animate-pulse rounded-xl bg-muted" />;
+  }
   if (m.attachment_type?.startsWith("image/")) {
-    return url ? (
-      <a href={url} target="_blank" rel="noreferrer">
-        <img src={url} alt={m.attachment_name ?? "Foto"} className="mb-1 max-h-80 rounded-xl object-cover" />
+    return mediaUrl ? (
+      <a href={mediaUrl} target="_blank" rel="noreferrer">
+        <img src={mediaUrl} alt={m.attachment_name ?? "Foto"} className="mb-1 max-h-80 rounded-xl object-cover" />
       </a>
     ) : (
       <div className="mb-1 h-48 w-56 animate-pulse rounded-xl bg-muted" />
     );
   }
   return (
-    <a href={url ?? "#"} target="_blank" rel="noreferrer" className="mb-1 flex items-center gap-2 rounded-xl bg-background/20 px-3 py-2">
+    <a href={mediaUrl ?? "#"} download={m.attachment_name ?? undefined} target="_blank" rel="noreferrer" className="mb-1 flex items-center gap-2 rounded-xl bg-background/20 px-3 py-2">
       <FileText className="h-6 w-6 shrink-0" />
       <span className="truncate text-sm font-medium">{m.attachment_name}</span>
     </a>
