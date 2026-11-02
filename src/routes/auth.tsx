@@ -80,7 +80,7 @@ function AuthPage() {
         return;
       }
     }
-    if (!data.session) {
+    if (!data.session || !data.user) {
       toast.error(
         "Tu cuenta necesita confirmación antes de entrar. El registro por número aún no está habilitado.",
       );

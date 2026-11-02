@@ -8,6 +8,13 @@
       "when": 1791587604051,
       "tag": "0000_migration",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793635438760,
+      "tag": "0001_end_to_end_encryption",
+      "breakpoints": true
     }
   ]
 }

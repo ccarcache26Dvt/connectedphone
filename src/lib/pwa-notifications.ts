@@ -67,7 +67,7 @@ export async function showPwaSystemNotification({
     return false;
   }
 
-  const notificationOptions: NotificationOptions = {
+  const notificationOptions: NotificationOptions & { vibrate?: number[] } = {
     body,
     icon: "/pwa-icon.svg",
     badge: "/pwa-icon.svg",

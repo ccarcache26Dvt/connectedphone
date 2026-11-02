@@ -824,7 +824,7 @@ function ChatPanel({
         if (event.data.size) chunks.push(event.data);
       };
       recorder.onstop = () => {
-        stream.getTracks().forEach((track) => track.stop());
+        stream?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
         recorderRef.current = null;
         setRecording(false);
