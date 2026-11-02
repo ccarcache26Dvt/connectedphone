@@ -11,12 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -127,7 +122,9 @@ export function ChatCustomizerDialog({
 
   async function handleRequestNotifications() {
     if (!notificationState.isPwa) {
-      toast.info("Las notificaciones en el teléfono solo están disponibles si instalas Connected como PWA.");
+      toast.info(
+        "Las notificaciones en el teléfono solo están disponibles si instalas Connected como PWA.",
+      );
       return;
     }
     const result = await requestPwaNotificationPermission();
@@ -187,7 +184,8 @@ export function ChatCustomizerDialog({
               <div>
                 <h4 className="text-sm font-semibold">Foto de fondo del chat</h4>
                 <p className="text-xs text-muted-foreground">
-                  Personaliza el fondo de tus conversaciones con tu propia foto o estilos predefinidos.
+                  Personaliza el fondo de tus conversaciones con tu propia foto o estilos
+                  predefinidos.
                 </p>
               </div>
               {localWallpaper.mode !== "none" && (
@@ -221,13 +219,15 @@ export function ChatCustomizerDialog({
               {isProcessingImage
                 ? "Procesando foto..."
                 : localWallpaper.mode === "custom"
-                ? "Cambiar por otra foto de tu galería"
-                : "Elegir foto de fondo desde tu dispositivo"}
+                  ? "Cambiar por otra foto de tu galería"
+                  : "Elegir foto de fondo desde tu dispositivo"}
             </Button>
 
             {/* Presets visuales */}
             <div>
-              <span className="text-xs font-medium text-muted-foreground">O elige un estilo predefinido:</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                O elige un estilo predefinido:
+              </span>
               <div className="mt-2 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                 {wallpaperPresets.map((preset) => {
                   const isSelected =
@@ -351,8 +351,8 @@ export function ChatCustomizerDialog({
                   {notificationState.permission === "granted"
                     ? "Permitidas"
                     : notificationState.permission === "denied"
-                    ? "Bloqueadas"
-                    : "No solicitadas"}
+                      ? "Bloqueadas"
+                      : "No solicitadas"}
                 </span>
               </div>
 

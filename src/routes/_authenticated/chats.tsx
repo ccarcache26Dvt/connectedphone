@@ -4,23 +4,49 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
-  ArrowLeft, Camera, Check, CheckCheck, FileText, LogOut, MessageCircle, Mic, Palette, Paperclip, Plus, Search, Send, ShieldAlert, ShieldCheck, Sparkles, Square,
+  ArrowLeft,
+  Camera,
+  Check,
+  CheckCheck,
+  FileText,
+  LogOut,
+  MessageCircle,
+  Mic,
+  Palette,
+  Paperclip,
+  Plus,
+  Search,
+  Send,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Square,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  fetchConversations, fetchMessages, openConversationWith, initials,
-  type ConversationItem, type Message, type Profile,
+  fetchConversations,
+  fetchMessages,
+  openConversationWith,
+  initials,
+  type ConversationItem,
+  type Message,
+  type Profile,
 } from "@/lib/chat-data";
 import { normalizePhone, formatPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
-import { conversationKey, decryptFile, decryptPayload, encryptFile, encryptPayload } from "@/lib/message-encryption";
+import {
+  conversationKey,
+  decryptFile,
+  decryptPayload,
+  encryptFile,
+  encryptPayload,
+} from "@/lib/message-encryption";
 import { applyChatPalette, getChatPalette, type ChatPaletteId } from "@/lib/chat-themes";
 import { InstallPwaButton } from "@/components/install-pwa-button";
 import { CameraCaptureDialog } from "@/components/camera-capture-dialog";
@@ -58,6 +84,12 @@ function timeLabel(iso: string) {
   if (isToday(d)) return format(d, "HH:mm");
   if (isYesterday(d)) return "Ayer";
   return format(d, "dd/MM/yy");
+}
+
+function formatRecordingDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 function ChatsPage() {
@@ -101,6 +133,11 @@ function ChatsPage() {
     queryFn: () => fetchConversations(me),
   });
 
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const convsRef = useRef(convs);
+  convsRef.current = convs;
+
   // Realtime: new / updated messages and conversations
   useEffect(() => {
     // Si la app está instalada como PWA y las notificaciones no se han configurado aún, solicitar permiso
@@ -113,15 +150,16 @@ function ChatsPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         const row = (payload.new ?? payload.old) as Message;
         qc.invalidateQueries({ queryKey: ["conversations", me] });
-        if (row?.conversation_id) qc.invalidateQueries({ queryKey: ["messages", row.conversation_id] });
+        if (row?.conversation_id)
+          qc.invalidateQueries({ queryKey: ["messages", row.conversation_id] });
 
         // Notificaciones nativas para la bandeja del teléfono:
         // Solo caen si está instalada como PWA (si no está instalada, no se emite nada).
         if (payload.eventType === "INSERT" && row && row.sender_id !== me && isPwaInstalled()) {
           const isDocHidden = typeof document !== "undefined" && document.hidden;
-          const isDifferentConv = activeId !== row.conversation_id;
+          const isDifferentConv = activeIdRef.current !== row.conversation_id;
           if (isDocHidden || isDifferentConv) {
-            const senderItem = convs.find((c) => c.conv.id === row.conversation_id);
+            const senderItem = convsRef.current.find((c) => c.conv.id === row.conversation_id);
             const senderName =
               senderItem?.other?.display_name ||
               (senderItem?.other ? formatPhone(senderItem.other.phone) : "Connected");
@@ -140,7 +178,7 @@ function ChatsPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [me, qc, activeId, convs]);
+  }, [me, qc]);
 
   // Presence: who is online
   useEffect(() => {
@@ -149,7 +187,8 @@ function ChatsPage() {
     ch.subscribe(async (status) => {
       if (status === "SUBSCRIBED") await ch.track({ at: Date.now() });
     });
-    const touch = () => supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", me);
+    const touch = () =>
+      supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", me);
     touch();
     const t = setInterval(touch, 60_000);
     window.addEventListener("beforeunload", touch);
@@ -164,7 +203,11 @@ function ChatsPage() {
   const active = convs.find((c) => c.conv.id === activeId) ?? null;
   const filtered = convs.filter((c) => {
     const q = filter.toLowerCase();
-    return !q || c.other?.display_name.toLowerCase().includes(q) || c.other?.phone.includes(q.replace(/\D/g, "") || "~");
+    return (
+      !q ||
+      c.other?.display_name.toLowerCase().includes(q) ||
+      c.other?.phone.includes(q.replace(/\D/g, "") || "~")
+    );
   });
 
   const emptyWallpaperStyle = useMemo<React.CSSProperties>(() => {
@@ -201,14 +244,21 @@ function ChatsPage() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
       {/* Sidebar */}
-      <aside className={cn("flex w-full flex-col border-r bg-panel md:w-[380px]", active && "hidden md:flex")}>
+      <aside
+        className={cn(
+          "flex w-full flex-col border-r bg-panel md:w-[380px]",
+          active && "hidden md:flex",
+        )}
+      >
         <div className="flex items-center justify-between px-4 py-4">
           <div className="min-w-0 flex items-center gap-3">
             <Avatar name={myProfile?.display_name ?? ""} />
             <div className="leading-tight">
               <div className="font-display text-lg font-semibold">Connected</div>
               <div className="truncate text-sm">{myProfile?.display_name}</div>
-              <div className="text-xs text-muted-foreground">{myProfile && formatPhone(myProfile.phone)}</div>
+              <div className="text-xs text-muted-foreground">
+                {myProfile && formatPhone(myProfile.phone)}
+              </div>
             </div>
           </div>
           <div className="flex gap-1">
@@ -222,7 +272,12 @@ function ChatsPage() {
               <Palette className="h-5 w-5" />
             </Button>
             <InstallPwaButton />
-            <Button size="icon" variant="ghost" onClick={() => setNewOpen(true)} aria-label="Nuevo chat">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setNewOpen(true)}
+              aria-label="Nuevo chat"
+            >
               <Plus className="h-5 w-5" />
             </Button>
             <Button size="icon" variant="ghost" onClick={signOut} aria-label="Cerrar sesión">
@@ -233,7 +288,12 @@ function ChatsPage() {
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Buscar chat" className="pl-9" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <Input
+              placeholder="Buscar chat"
+              className="pl-9"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -278,12 +338,19 @@ function ChatsPage() {
                 style={emptyWallpaperStyle}
               />
             )}
-            <div className={cn("relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 text-center", wallpaper.mode === "none" && "chat-canvas")}>
+            <div
+              className={cn(
+                "relative z-10 flex h-full w-full flex-col items-center justify-center gap-4 text-center",
+                wallpaper.mode === "none" && "chat-canvas",
+              )}
+            >
               <span className="grid h-16 w-16 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
                 <MessageCircle className="h-8 w-8" />
               </span>
               <h2 className="text-2xl font-semibold">Connected</h2>
-              <p className="max-w-xs text-sm text-muted-foreground">Elige una conversación o inicia una nueva con un número de teléfono.</p>
+              <p className="max-w-xs text-sm text-muted-foreground">
+                Elige una conversación o inicia una nueva con un número de teléfono.
+              </p>
             </div>
           </div>
         )}
@@ -310,33 +377,77 @@ function ChatsPage() {
   );
 }
 
-
-function Avatar({ name, online, size = "md" }: { name: string; online?: boolean; size?: "md" | "sm" }) {
+function Avatar({
+  name,
+  online,
+  size = "md",
+}: {
+  name: string;
+  online?: boolean;
+  size?: "md" | "sm";
+}) {
   return (
     <div className="relative shrink-0">
-      <div className={cn("grid place-items-center rounded-full bg-secondary font-semibold text-secondary-foreground", size === "md" ? "h-11 w-11" : "h-9 w-9 text-sm")}>
+      <div
+        className={cn(
+          "grid place-items-center rounded-full bg-secondary font-semibold text-secondary-foreground",
+          size === "md" ? "h-11 w-11" : "h-9 w-9 text-sm",
+        )}
+      >
         {initials(name) || "?"}
       </div>
-      {online && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-panel bg-online" />}
+      {online && (
+        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-panel bg-online" />
+      )}
     </div>
   );
 }
 
-function ConvRow({ item, me, active, online, onClick }: { item: ConversationItem; me: string; active: boolean; online: boolean; onClick: () => void }) {
+function ConvRow({
+  item,
+  me,
+  active,
+  online,
+  onClick,
+}: {
+  item: ConversationItem;
+  me: string;
+  active: boolean;
+  online: boolean;
+  onClick: () => void;
+}) {
   const name = item.other?.display_name || (item.other ? formatPhone(item.other.phone) : "Usuario");
   const last = item.last;
   const preview = last
     ? last.encryption_version > 0
-      ? last.attachment_path ? "🔒 Mensaje cifrado" : "🔒 Mensaje privado"
+      ? last.attachment_path
+        ? "🔒 Mensaje cifrado"
+        : "🔒 Mensaje privado"
       : "🔒 Historial anterior (sin cifrar)"
     : "Nuevo chat";
   return (
-    <Button variant="ghost" onClick={onClick} className={cn("flex h-auto w-full justify-start whitespace-normal rounded-none items-center gap-3 px-4 py-3 text-left", active && "bg-accent")}>
+    <Button
+      variant="ghost"
+      onClick={onClick}
+      className={cn(
+        "flex h-auto w-full justify-start whitespace-normal rounded-none items-center gap-3 px-4 py-3 text-left",
+        active && "bg-accent",
+      )}
+    >
       <Avatar name={name} online={online} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate font-semibold">{name}</span>
-          {last && <span className={cn("shrink-0 text-xs", item.unread ? "text-primary" : "text-muted-foreground")}>{timeLabel(last.created_at)}</span>}
+          {last && (
+            <span
+              className={cn(
+                "shrink-0 text-xs",
+                item.unread ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {timeLabel(last.created_at)}
+            </span>
+          )}
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1 truncate text-sm text-muted-foreground">
@@ -344,7 +455,9 @@ function ConvRow({ item, me, active, online, onClick }: { item: ConversationItem
             <span className="truncate">{preview}</span>
           </span>
           {item.unread > 0 && (
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">{item.unread}</span>
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+              {item.unread}
+            </span>
           )}
         </div>
       </div>
@@ -353,7 +466,11 @@ function ConvRow({ item, me, active, online, onClick }: { item: ConversationItem
 }
 
 function Ticks({ read }: { read: boolean }) {
-  return read ? <CheckCheck className="h-4 w-4 shrink-0 text-read" /> : <Check className="h-4 w-4 shrink-0 opacity-70" />;
+  return read ? (
+    <CheckCheck className="h-4 w-4 shrink-0 text-read" />
+  ) : (
+    <Check className="h-4 w-4 shrink-0 opacity-70" />
+  );
 }
 
 type DisplayMessage = Message & {
@@ -404,6 +521,7 @@ function ChatPanel({
   const [typing, setTyping] = useState(false);
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([]);
   const [chatKey, setChatKey] = useState<CryptoKey | null>(null);
@@ -416,14 +534,21 @@ function ChatPanel({
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSent = useRef(0);
 
-  const { data: messages = [] } = useQuery({ queryKey: ["messages", convId], queryFn: () => fetchMessages(convId) });
+  const { data: messages = [] } = useQuery({
+    queryKey: ["messages", convId],
+    queryFn: () => fetchMessages(convId),
+  });
   const peerId = other?.id;
   const peerEncryptionProfile = useQuery({
     queryKey: ["encryption-profile", peerId],
     enabled: !!peerId,
     queryFn: async () => {
       if (!peerId) throw new Error("Falta el identificador del contacto.");
-      const { data, error } = await supabase.from("profiles").select("public_key").eq("id", peerId).single();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("public_key")
+        .eq("id", peerId)
+        .single();
       if (error) throw error;
       return data;
     },
@@ -436,9 +561,13 @@ function ChatPanel({
     if (!peerId) return;
     const channel = supabase
       .channel(`encryption-profile:${peerId}`)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${peerId}` }, () => {
-        void qc.invalidateQueries({ queryKey: ["encryption-profile", peerId] });
-      })
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${peerId}` },
+        () => {
+          void qc.invalidateQueries({ queryKey: ["encryption-profile", peerId] });
+        },
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -453,7 +582,9 @@ function ChatPanel({
       return;
     }
     if (!peerPublicKey) {
-      setEncryptionError("El cifrado estará disponible cuando la otra persona inicie sesión en Connected.");
+      setEncryptionError(
+        "El cifrado estará disponible cuando la otra persona inicie sesión en Connected.",
+      );
       return;
     }
     setEncryptionError("");
@@ -462,7 +593,10 @@ function ChatPanel({
         if (!cancelled) setChatKey(key);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setEncryptionError(error instanceof Error ? error.message : "No se pudo iniciar el cifrado privado.");
+        if (!cancelled)
+          setEncryptionError(
+            error instanceof Error ? error.message : "No se pudo iniciar el cifrado privado.",
+          );
       });
     return () => {
       cancelled = true;
@@ -482,8 +616,11 @@ function ChatPanel({
       messages.map(async (message): Promise<DisplayMessage> => {
         if (message.encryption_version === 0 || !message.body) return message;
         try {
-          const parsed = encryptedMessageSchema.safeParse(JSON.parse(await decryptPayload(message.body, chatKey)));
-          if (!parsed.success) throw new Error("El contenido privado tiene un formato no reconocido.");
+          const parsed = encryptedMessageSchema.safeParse(
+            JSON.parse(await decryptPayload(message.body, chatKey)),
+          );
+          if (!parsed.success)
+            throw new Error("El contenido privado tiene un formato no reconocido.");
           if (parsed.data.kind === "text") return { ...message, body: parsed.data.text };
           return {
             ...message,
@@ -529,7 +666,10 @@ function ChatPanel({
     supabase
       .from("messages")
       .update({ read_at: new Date().toISOString() })
-      .in("id", unread.map((m) => m.id))
+      .in(
+        "id",
+        unread.map((m) => m.id),
+      )
       .then(() => qc.invalidateQueries({ queryKey: ["conversations", me] }));
   }, [messages, me, qc]);
 
@@ -537,11 +677,31 @@ function ChatPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayMessages.length, typing]);
 
-  useEffect(() => () => {
+  useEffect(
+    () => () => {
+      discardRecordingRef.current = true;
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!recording) {
+      setRecordingSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setRecordingSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [recording]);
+
+  function cancelRecording() {
     discardRecordingRef.current = true;
     recorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
+    setRecording(false);
+  }
 
   function onType(v: string) {
     setText(v);
@@ -556,10 +716,16 @@ function ChatPanel({
     e?.preventDefault();
     const body = text.trim();
     if (!body) return;
-    if (!chatKey) { toast.error(encryptionError || "No se pudo iniciar el cifrado privado."); return; }
+    if (!chatKey) {
+      toast.error(encryptionError || "No se pudo iniciar el cifrado privado.");
+      return;
+    }
     setSending(true);
     try {
-      const encryptedBody = await encryptPayload(JSON.stringify({ kind: "text", text: body }), chatKey);
+      const encryptedBody = await encryptPayload(
+        JSON.stringify({ kind: "text", text: body }),
+        chatKey,
+      );
       const { error } = await supabase.from("messages").insert({
         conversation_id: convId,
         sender_id: me,
@@ -571,28 +737,43 @@ function ChatPanel({
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations", me] });
     } catch (error) {
-      toast.error(error instanceof Error ? `No se pudo enviar el mensaje cifrado: ${error.message}` : "No se pudo enviar el mensaje cifrado.");
+      toast.error(
+        error instanceof Error
+          ? `No se pudo enviar el mensaje cifrado: ${error.message}`
+          : "No se pudo enviar el mensaje cifrado.",
+      );
     } finally {
       setSending(false);
     }
   }
 
   async function sendFile(file: File, kind: "attachment" | "voice" = "attachment"): Promise<void> {
-    if (file.size > 20 * 1024 * 1024) { toast.error("Máximo 20 MB por archivo"); return; }
-    if (!chatKey) { toast.error(encryptionError || "No se pudo iniciar el cifrado privado."); return; }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Máximo 20 MB por archivo");
+      return;
+    }
+    if (!chatKey) {
+      toast.error(encryptionError || "No se pudo iniciar el cifrado privado.");
+      return;
+    }
     setSending(true);
     try {
       const encryptedFile = await encryptFile(file, chatKey);
-      const encryptedBody = await encryptPayload(JSON.stringify({
-        kind,
-        name: kind === "voice" ? "Nota de voz" : file.name,
-        mime: file.type || "application/octet-stream",
-        iv: encryptedFile.iv,
-      }), chatKey);
+      const encryptedBody = await encryptPayload(
+        JSON.stringify({
+          kind,
+          name: kind === "voice" ? "Nota de voz" : file.name,
+          mime: file.type || "application/octet-stream",
+          iv: encryptedFile.iv,
+        }),
+        chatKey,
+      );
       const path = `${convId}/${crypto.randomUUID()}.enc`;
       const { error: uploadError } = await supabase.storage
         .from("attachments")
-        .upload(path, new Blob([encryptedFile.data], { type: "application/octet-stream" }), { contentType: "application/octet-stream" });
+        .upload(path, new Blob([encryptedFile.data], { type: "application/octet-stream" }), {
+          contentType: "application/octet-stream",
+        });
       if (uploadError) throw uploadError;
       const { error } = await supabase.from("messages").insert({
         conversation_id: convId,
@@ -607,7 +788,11 @@ function ChatPanel({
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations", me] });
     } catch (error) {
-      toast.error(error instanceof Error ? `No se pudo enviar el archivo cifrado: ${error.message}` : "No se pudo enviar el archivo cifrado.");
+      toast.error(
+        error instanceof Error
+          ? `No se pudo enviar el archivo cifrado: ${error.message}`
+          : "No se pudo enviar el archivo cifrado.",
+      );
     } finally {
       setSending(false);
     }
@@ -618,7 +803,10 @@ function ChatPanel({
       recorderRef.current?.stop();
       return;
     }
-    if (!chatKey) { toast.error(encryptionError || "No se pudo iniciar el cifrado privado."); return; }
+    if (!chatKey) {
+      toast.error(encryptionError || "No se pudo iniciar el cifrado privado.");
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       toast.error("Este navegador no permite grabar notas de voz.");
       return;
@@ -653,7 +841,11 @@ function ChatPanel({
     } catch (error) {
       stream?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      toast.error(error instanceof Error ? `No se pudo acceder al micrófono: ${error.message}` : "No se pudo acceder al micrófono.");
+      toast.error(
+        error instanceof Error
+          ? `No se pudo acceder al micrófono: ${error.message}`
+          : "No se pudo acceder al micrófono.",
+      );
     }
   }
 
@@ -661,7 +853,11 @@ function ChatPanel({
     const out: { day: string; items: DisplayMessage[] }[] = [];
     for (const m of displayMessages) {
       const d = new Date(m.created_at);
-      const day = isToday(d) ? "Hoy" : isYesterday(d) ? "Ayer" : format(d, "d 'de' MMMM yyyy", { locale: es });
+      const day = isToday(d)
+        ? "Hoy"
+        : isYesterday(d)
+          ? "Ayer"
+          : format(d, "d 'de' MMMM yyyy", { locale: es });
       if (out.at(-1)?.day !== day) out.push({ day, items: [] });
       out.at(-1)?.items.push(m);
     }
@@ -703,13 +899,21 @@ function ChatPanel({
       )}
 
       <header className="relative z-10 flex items-center gap-3 border-b bg-panel/95 backdrop-blur px-4 py-3">
-        <Button size="icon" variant="ghost" className="md:hidden" onClick={onBack} aria-label="Volver">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="md:hidden"
+          onClick={onBack}
+          aria-label="Volver"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <Avatar name={name} online={online} size="sm" />
         <div className="leading-tight">
           <div className="font-semibold">{name}</div>
-          <div className={cn("text-xs", typing || online ? "text-online" : "text-muted-foreground")}>
+          <div
+            className={cn("text-xs", typing || online ? "text-online" : "text-muted-foreground")}
+          >
             {typing ? "escribiendo…" : online ? "en línea" : other ? lastSeenLabel(other) : ""}
           </div>
         </div>
@@ -724,18 +928,29 @@ function ChatPanel({
           >
             <Sparkles className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground" title="Cifrado de extremo a extremo">
+          <div
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            title="Cifrado de extremo a extremo"
+          >
             <ShieldCheck className="h-4 w-4 text-online" />
             <span className="hidden sm:inline">Cifrado</span>
           </div>
         </div>
       </header>
 
-      <div className={cn("relative z-10 flex-1 overflow-y-auto px-4 py-6 md:px-10", wallpaper.mode === "none" ? "chat-canvas" : "bg-transparent")}>
+      <div
+        className={cn(
+          "relative z-10 flex-1 overflow-y-auto px-4 py-6 md:px-10",
+          wallpaper.mode === "none" ? "chat-canvas" : "bg-transparent",
+        )}
+      >
         {messages.some((message) => message.encryption_version === 0) && (
           <div className="mx-auto mb-5 flex max-w-2xl items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
             <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-            <span>El historial anterior a la activación del cifrado se conserva y está marcado; esos mensajes antiguos aún no están cifrados.</span>
+            <span>
+              El historial anterior a la activación del cifrado se conserva y está marcado; esos
+              mensajes antiguos aún no están cifrados.
+            </span>
           </div>
         )}
         {encryptionError && (
@@ -746,7 +961,9 @@ function ChatPanel({
         {grouped.map((g) => (
           <div key={g.day} className="space-y-1.5">
             <div className="sticky top-0 z-10 my-4 flex justify-center">
-              <span className="rounded-full bg-panel px-3 py-1 text-xs text-muted-foreground shadow">{g.day}</span>
+              <span className="rounded-full bg-panel px-3 py-1 text-xs text-muted-foreground shadow">
+                {g.day}
+              </span>
             </div>
             {g.items.map((m) => (
               <Bubble key={m.id} m={m} mine={m.sender_id === me} chatKey={chatKey} />
@@ -756,67 +973,118 @@ function ChatPanel({
         {typing && (
           <div className="mt-2 inline-flex gap-1 rounded-2xl rounded-bl-sm bg-bubble-in px-4 py-3">
             {[0, 1, 2].map((i) => (
-              <span key={i} className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" style={{ animationDelay: `${i * 150}ms` }} />
+              <span
+                key={i}
+                className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground"
+                style={{ animationDelay: `${i * 150}ms` }}
+              />
             ))}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} className="relative z-10 flex items-center gap-2 border-t bg-panel/95 backdrop-blur px-3 py-3">
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) sendFile(f);
-            e.target.value = "";
-          }}
-        />
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={() => fileRef.current?.click()}
-          disabled={sending}
-          aria-label="Adjuntar archivo"
-          title="Adjuntar archivo"
+      {recording ? (
+        <div className="relative z-10 flex items-center justify-between gap-3 border-t bg-panel/95 backdrop-blur px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-destructive" />
+            </span>
+            <span className="text-sm font-medium text-destructive">Grabando nota de voz…</span>
+            <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold text-foreground">
+              {formatRecordingDuration(recordingSeconds)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={cancelRecording}
+              className="text-muted-foreground hover:text-destructive"
+              title="Cancelar y descartar nota"
+              aria-label="Cancelar y descartar nota"
+            >
+              <Trash2 className="h-5 w-5" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              className="h-10 w-10 rounded-full bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
+              onClick={toggleRecording}
+              title="Finalizar y enviar nota"
+              aria-label="Finalizar y enviar nota"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <form
+          onSubmit={send}
+          className="relative z-10 flex items-center gap-2 border-t bg-panel/95 backdrop-blur px-3 py-3"
         >
-          <Paperclip className="h-5 w-5" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={() => setCameraOpen(true)}
-          disabled={sending || !chatKey}
-          aria-label="Tomar foto con la cámara"
-          title="Tomar foto con la cámara"
-        >
-          <Camera className="h-5 w-5" />
-        </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant={recording ? "destructive" : "ghost"}
-          onClick={toggleRecording}
-          disabled={sending || !chatKey}
-          aria-label={recording ? "Detener nota de voz" : "Grabar nota de voz"}
-          title={recording ? "Detener grabación" : "Grabar nota de voz"}
-        >
-          {recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-        </Button>
-        <Input
-          value={text}
-          onChange={(e) => onType(e.target.value)}
-          placeholder={recording ? "Grabando nota de voz…" : sending ? "Cifrando y enviando…" : "Escribe un mensaje"}
-          className="h-11 rounded-full"
-        />
-        <Button type="submit" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={sending || !text.trim() || !chatKey} aria-label="Enviar">
-          <Send className="h-5 w-5" />
-        </Button>
-      </form>
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) sendFile(f);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={() => fileRef.current?.click()}
+            disabled={sending}
+            aria-label="Adjuntar archivo"
+            title="Adjuntar archivo"
+          >
+            <Paperclip className="h-5 w-5" />
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={() => setCameraOpen(true)}
+            disabled={sending || !chatKey}
+            aria-label="Tomar foto con la cámara"
+            title="Tomar foto con la cámara"
+          >
+            <Camera className="h-5 w-5" />
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={toggleRecording}
+            disabled={sending || !chatKey}
+            aria-label="Grabar nota de voz"
+            title="Grabar nota de voz"
+          >
+            <Mic className="h-5 w-5" />
+          </Button>
+          <Input
+            value={text}
+            onChange={(e) => onType(e.target.value)}
+            placeholder={sending ? "Cifrando y enviando…" : "Escribe un mensaje"}
+            className="h-11 rounded-full"
+          />
+          <Button
+            type="submit"
+            size="icon"
+            className="h-11 w-11 shrink-0 rounded-full"
+            disabled={sending || !text.trim() || !chatKey}
+            aria-label="Enviar"
+          >
+            <Send className="h-5 w-5" />
+          </Button>
+        </form>
+      )}
 
       <CameraCaptureDialog
         open={cameraOpen}
@@ -827,22 +1095,34 @@ function ChatPanel({
   );
 }
 
-
 function lastSeenLabel(p: Profile) {
   return `últ. vez ${formatDistanceToNow(new Date(p.last_seen), { addSuffix: true, locale: es })}`;
 }
 
-function Bubble({ m, mine, chatKey }: { m: DisplayMessage; mine: boolean; chatKey: CryptoKey | null }) {
+function Bubble({
+  m,
+  mine,
+  chatKey,
+}: {
+  m: DisplayMessage;
+  mine: boolean;
+  chatKey: CryptoKey | null;
+}) {
   return (
     <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "max-w-[78%] rounded-2xl px-3 py-2 shadow-sm md:max-w-[60%]",
-          mine ? "rounded-br-sm bg-bubble-out text-bubble-out-foreground" : "rounded-bl-sm bg-bubble-in text-bubble-in-foreground",
+          mine
+            ? "rounded-br-sm bg-bubble-out text-bubble-out-foreground"
+            : "rounded-bl-sm bg-bubble-in text-bubble-in-foreground",
         )}
       >
         {m.legacyHistory && (
-          <div className="mb-1 flex items-center gap-1 text-[10px] text-amber-500" title="Este mensaje se guardó antes de activar el cifrado">
+          <div
+            className="mb-1 flex items-center gap-1 text-[10px] text-amber-500"
+            title="Este mensaje se guardó antes de activar el cifrado"
+          >
             <ShieldAlert className="h-3 w-3" />
             Historial anterior sin cifrar
           </div>
@@ -852,16 +1132,27 @@ function Bubble({ m, mine, chatKey }: { m: DisplayMessage; mine: boolean; chatKe
           <Attachment m={m} chatKey={chatKey} />
         )}
         {m.attachment_path && m.encryption_version > 0 && !m.fileIv && !m.decryptError && (
-          <p className="text-sm italic text-muted-foreground">Archivo cifrado; esperando la clave privada.</p>
+          <p className="text-sm italic text-muted-foreground">
+            Archivo cifrado; esperando la clave privada.
+          </p>
         )}
-        {m.decryptError && <p className="text-sm italic text-muted-foreground">No se pudo descifrar este mensaje.</p>}
+        {m.decryptError && (
+          <p className="text-sm italic text-muted-foreground">No se pudo descifrar este mensaje.</p>
+        )}
         {m.encryption_version > 0 && !m.body && !m.attachment_path && !m.decryptError && (
-          <p className="text-sm italic text-muted-foreground">Mensaje cifrado; esperando la clave privada.</p>
+          <p className="text-sm italic text-muted-foreground">
+            Mensaje cifrado; esperando la clave privada.
+          </p>
         )}
         {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
         <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-70">
           {format(new Date(m.created_at), "HH:mm")}
-          {mine && (m.read_at ? <CheckCheck className="h-3.5 w-3.5 text-read" /> : <Check className="h-3.5 w-3.5" />)}
+          {mine &&
+            (m.read_at ? (
+              <CheckCheck className="h-3.5 w-3.5 text-read" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            ))}
         </div>
       </div>
     </div>
@@ -874,7 +1165,9 @@ function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | nu
     staleTime: 50 * 60 * 1000,
     queryFn: async () => {
       if (!m.attachment_path) return null;
-      const { data, error } = await supabase.storage.from("attachments").createSignedUrl(m.attachment_path, 3600);
+      const { data, error } = await supabase.storage
+        .from("attachments")
+        .createSignedUrl(m.attachment_path, 3600);
       if (error) throw error;
       return data?.signedUrl ?? null;
     },
@@ -910,7 +1203,8 @@ function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | nu
         setMediaUrl(objectUrl);
       })
       .catch((error: unknown) => {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "No se pudo descifrar el archivo.");
+        if (!cancelled)
+          toast.error(error instanceof Error ? error.message : "No se pudo descifrar el archivo.");
       });
     return () => {
       cancelled = true;
@@ -919,34 +1213,65 @@ function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | nu
   }, [url, m.encryption_version, m.fileIv, m.attachment_type, chatKey]);
 
   if (m.attachment_type?.startsWith("audio/")) {
-    return mediaUrl
-      ? <audio controls preload="metadata" src={mediaUrl} className="mb-1 max-w-full" aria-label="Nota de voz" />
-      : <div className="mb-1 h-10 w-56 animate-pulse rounded-xl bg-muted" />;
+    return mediaUrl ? (
+      <audio
+        controls
+        preload="metadata"
+        src={mediaUrl}
+        className="mb-1 max-w-full"
+        aria-label="Nota de voz"
+      />
+    ) : (
+      <div className="mb-1 h-10 w-56 animate-pulse rounded-xl bg-muted" />
+    );
   }
   if (m.attachment_type?.startsWith("image/")) {
     return mediaUrl ? (
       <a href={mediaUrl} target="_blank" rel="noreferrer">
-        <img src={mediaUrl} alt={m.attachment_name ?? "Foto"} className="mb-1 max-h-80 rounded-xl object-cover" />
+        <img
+          src={mediaUrl}
+          alt={m.attachment_name ?? "Foto"}
+          className="mb-1 max-h-80 rounded-xl object-cover"
+        />
       </a>
     ) : (
       <div className="mb-1 h-48 w-56 animate-pulse rounded-xl bg-muted" />
     );
   }
   return (
-    <a href={mediaUrl ?? "#"} download={m.attachment_name ?? undefined} target="_blank" rel="noreferrer" className="mb-1 flex items-center gap-2 rounded-xl bg-background/20 px-3 py-2">
+    <a
+      href={mediaUrl ?? "#"}
+      download={m.attachment_name ?? undefined}
+      target="_blank"
+      rel="noreferrer"
+      className="mb-1 flex items-center gap-2 rounded-xl bg-background/20 px-3 py-2"
+    >
       <FileText className="h-6 w-6 shrink-0" />
       <span className="truncate text-sm font-medium">{m.attachment_name}</span>
     </a>
   );
 }
 
-function NewChatDialog({ open, onOpenChange, me, onOpened }: { open: boolean; onOpenChange: (o: boolean) => void; me: string; onOpened: (id: string) => void }) {
+function NewChatDialog({
+  open,
+  onOpenChange,
+  me,
+  onOpened,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  me: string;
+  onOpened: (id: string) => void;
+}) {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const p = normalizePhone(phone);
-    if (!p) { toast.error("Número inválido. Incluye el código de país"); return; }
+    if (!p) {
+      toast.error("Número inválido. Incluye el código de país");
+      return;
+    }
     setBusy(true);
     try {
       const id = await openConversationWith(me, p);
@@ -966,7 +1291,13 @@ function NewChatDialog({ open, onOpenChange, me, onOpened }: { open: boolean; on
           <DialogTitle>Nuevo chat</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
-          <Input type="tel" autoFocus placeholder="+505 8888 1234" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input
+            type="tel"
+            autoFocus
+            placeholder="+505 8888 1234"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? "Buscando…" : "Iniciar chat"}
           </Button>
