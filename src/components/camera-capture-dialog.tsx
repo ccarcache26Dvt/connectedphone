@@ -1,12 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Camera, Check, RefreshCw, X, AlertCircle, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
 interface CameraCaptureDialogProps {
@@ -15,11 +10,7 @@ interface CameraCaptureDialogProps {
   onCapture: (file: File) => void;
 }
 
-export function CameraCaptureDialog({
-  open,
-  onOpenChange,
-  onCapture,
-}: CameraCaptureDialogProps) {
+export function CameraCaptureDialog({ open, onOpenChange, onCapture }: CameraCaptureDialogProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -27,94 +18,102 @@ export function CameraCaptureDialog({
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
-  const [permissionState, setPermissionState] = useState<"prompt" | "granted" | "denied" | "unsupported">("prompt");
+  const [permissionState, setPermissionState] = useState<
+    "prompt" | "granted" | "denied" | "unsupported"
+  >("prompt");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isFlashing, setIsFlashing] = useState(false);
 
-  function stopStream() {
+  const stopStream = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-  }
+  }, []);
 
-  async function startCamera(mode: "environment" | "user") {
-    stopStream();
-    setErrorMessage(null);
+  const startCamera = useCallback(
+    async (mode: "environment" | "user") => {
+      stopStream();
+      setErrorMessage(null);
 
-    if (
-      typeof navigator === "undefined" ||
-      !navigator.mediaDevices ||
-      typeof navigator.mediaDevices.getUserMedia !== "function"
-    ) {
-      setPermissionState("unsupported");
-      setErrorMessage("Tu navegador o dispositivo no soporta acceso directo a la cámara.");
-      return;
-    }
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.mediaDevices ||
+        typeof navigator.mediaDevices.getUserMedia !== "function"
+      ) {
+        setPermissionState("unsupported");
+        setErrorMessage("Tu navegador o dispositivo no soporta acceso directo a la cámara.");
+        return;
+      }
 
-    try {
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: mode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      };
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: { ideal: mode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      setPermissionState("granted");
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = stream;
+        setPermissionState("granted");
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        try {
-          await videoRef.current.play();
-        } catch {
-          // autoplay policy handling
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch {
+            // autoplay policy handling
+          }
+        }
+      } catch (error) {
+        console.error("Error al iniciar cámara:", error);
+        stopStream();
+        const err = error as { name?: string; message?: string };
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          setPermissionState("denied");
+          setErrorMessage(
+            "Permiso denegado. Permite el acceso a la cámara en la barra de tu navegador.",
+          );
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          setPermissionState("unsupported");
+          setErrorMessage("No se encontró ninguna cámara disponible en tu dispositivo.");
+        } else {
+          setPermissionState("denied");
+          setErrorMessage("No se pudo iniciar la cámara: " + (err.message || "error desconocido"));
         }
       }
-    } catch (error) {
-      console.error("Error al iniciar cámara:", error);
-      stopStream();
-      const err = error as { name?: string; message?: string };
-      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        setPermissionState("denied");
-        setErrorMessage("Permiso denegado. Permite el acceso a la cámara en la barra de tu navegador.");
-      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-        setPermissionState("unsupported");
-        setErrorMessage("No se encontró ninguna cámara disponible en tu dispositivo.");
-      } else {
-        setPermissionState("denied");
-        setErrorMessage("No se pudo iniciar la cámara: " + (err.message || "error desconocido"));
-      }
-    }
-  }
+    },
+    [stopStream],
+  );
 
   useEffect(() => {
     if (open) {
-      setCapturedPreview(null);
+      setCapturedPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
       setCapturedBlob(null);
       setErrorMessage(null);
-      startCamera(facingMode);
+      void startCamera(facingMode);
     } else {
       stopStream();
-      if (capturedPreview) {
-        URL.revokeObjectURL(capturedPreview);
-        setCapturedPreview(null);
-      }
+      setCapturedPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
       setCapturedBlob(null);
     }
     return () => {
       stopStream();
     };
-  }, [open]);
+  }, [open, facingMode, startCamera, stopStream]);
 
   // Manejar cambio de cámara frontal/trasera
-  async function toggleFacingMode() {
-    const nextMode = facingMode === "environment" ? "user" : "environment";
-    setFacingMode(nextMode);
-    await startCamera(nextMode);
+  function toggleFacingMode() {
+    setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
   }
 
   function takePhoto() {
@@ -221,11 +220,7 @@ export function CameraCaptureDialog({
                   <AlertCircle className="h-10 w-10 text-destructive" />
                   <p className="max-w-xs text-muted-foreground">{errorMessage}</p>
                   <div className="flex flex-col gap-2 w-full max-w-xs mt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => startCamera(facingMode)}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => startCamera(facingMode)}>
                       Reintentar permiso
                     </Button>
                     <Button
@@ -259,11 +254,7 @@ export function CameraCaptureDialog({
         <div className="flex items-center justify-between p-4 bg-panel">
           {capturedPreview ? (
             <div className="flex w-full items-center justify-between gap-3">
-              <Button
-                variant="outline"
-                onClick={handleRetake}
-                className="flex-1 gap-2"
-              >
+              <Button variant="outline" onClick={handleRetake} className="flex-1 gap-2">
                 <X className="h-4 w-4" />
                 Repetir
               </Button>
@@ -310,12 +301,7 @@ export function CameraCaptureDialog({
               </button>
 
               <div className="w-24 flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onOpenChange(false)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
                   Cancelar
                 </Button>
               </div>
