@@ -46,6 +46,7 @@ export type Database = {
           body: string | null
           conversation_id: string
           created_at: string
+          encryption_version: number
           id: string
           read_at: string | null
           sender_id: string
@@ -57,6 +58,7 @@ export type Database = {
           body?: string | null
           conversation_id: string
           created_at?: string
+          encryption_version?: number
           id?: string
           read_at?: string | null
           sender_id: string
@@ -68,6 +70,7 @@ export type Database = {
           body?: string | null
           conversation_id?: string
           created_at?: string
+          encryption_version?: number
           id?: string
           read_at?: string | null
           sender_id?: string
@@ -89,6 +92,7 @@ export type Database = {
           id: string
           last_seen: string
           phone: string
+          public_key: string | null
         }
         Insert: {
           created_at?: string
@@ -96,6 +100,7 @@ export type Database = {
           id: string
           last_seen?: string
           phone: string
+          public_key?: string | null
         }
         Update: {
           created_at?: string
@@ -103,8 +108,38 @@ export type Database = {
           id?: string
           last_seen?: string
           phone?: string
+          public_key?: string | null
         }
         Relationships: []
+      }
+      user_encryption_keys: {
+        Row: {
+          encrypted_private_key: string
+          encryption_iv: string
+          encryption_salt: string
+          user_id: string
+        }
+        Insert: {
+          encrypted_private_key: string
+          encryption_iv: string
+          encryption_salt: string
+          user_id: string
+        }
+        Update: {
+          encrypted_private_key?: string
+          encryption_iv?: string
+          encryption_salt?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_encryption_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
