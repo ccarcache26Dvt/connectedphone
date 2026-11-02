@@ -716,21 +716,16 @@ function ChatPanel({
     e?.preventDefault();
     const body = text.trim();
     if (!body) return;
-    if (!chatKey) {
-      toast.error(encryptionError || "No se pudo iniciar el cifrado privado.");
-      return;
-    }
     setSending(true);
     try {
-      const encryptedBody = await encryptPayload(
-        JSON.stringify({ kind: "text", text: body }),
-        chatKey,
-      );
+      const encryptedBody = chatKey
+        ? await encryptPayload(JSON.stringify({ kind: "text", text: body }), chatKey)
+        : body;
       const { error } = await supabase.from("messages").insert({
         conversation_id: convId,
         sender_id: me,
         body: encryptedBody,
-        encryption_version: 1,
+        encryption_version: chatKey ? 1 : 0,
       });
       if (error) throw error;
       setText("");
@@ -752,11 +747,36 @@ function ChatPanel({
       toast.error("Máximo 20 MB por archivo");
       return;
     }
+    setSending(true);
     if (!chatKey) {
-      toast.error(encryptionError || "No se pudo iniciar el cifrado privado.");
+      try {
+        const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+        const path = `${convId}/${crypto.randomUUID()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("attachments")
+          .upload(path, file, { contentType: file.type || "application/octet-stream" });
+        if (uploadError) throw uploadError;
+        const { error } = await supabase.from("messages").insert({
+          conversation_id: convId,
+          sender_id: me,
+          body: null,
+          attachment_path: path,
+          attachment_type: file.type || "application/octet-stream",
+          attachment_name: kind === "voice" ? "Nota de voz" : file.name,
+          encryption_version: 0,
+        });
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ["messages", convId] });
+        qc.invalidateQueries({ queryKey: ["conversations", me] });
+      } catch (error) {
+        toast.error(
+          `No se pudo enviar el archivo: ${error instanceof Error ? error.message : "error"}`,
+        );
+      } finally {
+        setSending(false);
+      }
       return;
     }
-    setSending(true);
     try {
       const encryptedFile = await encryptFile(file, chatKey);
       const encryptedBody = await encryptPayload(
@@ -801,10 +821,6 @@ function ChatPanel({
   async function toggleRecording() {
     if (recording) {
       recorderRef.current?.stop();
-      return;
-    }
-    if (!chatKey) {
-      toast.error(encryptionError || "No se pudo iniciar el cifrado privado.");
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
