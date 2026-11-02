@@ -1067,7 +1067,7 @@ function ChatPanel({
             size="icon"
             variant="ghost"
             onClick={() => setCameraOpen(true)}
-            disabled={sending || !chatKey}
+            disabled={sending}
             aria-label="Tomar foto con la cámara"
             title="Tomar foto con la cámara"
           >
@@ -1078,7 +1078,7 @@ function ChatPanel({
             size="icon"
             variant="ghost"
             onClick={toggleRecording}
-            disabled={sending || !chatKey}
+            disabled={sending}
             aria-label="Grabar nota de voz"
             title="Grabar nota de voz"
           >
@@ -1094,7 +1094,7 @@ function ChatPanel({
             type="submit"
             size="icon"
             className="h-11 w-11 shrink-0 rounded-full"
-            disabled={sending || !text.trim() || !chatKey}
+            disabled={sending || !text.trim()}
             aria-label="Enviar"
           >
             <Send className="h-5 w-5" />
