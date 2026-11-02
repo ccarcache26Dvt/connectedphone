@@ -7,8 +7,10 @@
 export function isPwaInstalled(): boolean {
   if (typeof window === "undefined") return false;
   const isStandalone = window.matchMedia?.("(display-mode: standalone)")?.matches ?? false;
-  const isIosStandalone = (window.navigator as unknown as { standalone?: boolean })?.standalone === true;
-  const isAndroidApp = typeof document !== "undefined" && document.referrer.startsWith("android-app://");
+  const isIosStandalone =
+    (window.navigator as unknown as { standalone?: boolean })?.standalone === true;
+  const isAndroidApp =
+    typeof document !== "undefined" && document.referrer.startsWith("android-app://");
   return Boolean(isStandalone || isIosStandalone || isAndroidApp);
 }
 
@@ -33,7 +35,9 @@ export function getPwaNotificationStatus(): {
   };
 }
 
-export async function requestPwaNotificationPermission(): Promise<NotificationPermission | "not-pwa"> {
+export async function requestPwaNotificationPermission(): Promise<
+  NotificationPermission | "not-pwa"
+> {
   if (!isPwaInstalled()) {
     return "not-pwa";
   }
@@ -70,7 +74,7 @@ export async function showPwaSystemNotification({
     tag: conversationId ? `connected-conv-${conversationId}` : "connected-general",
     vibrate: [120, 60, 120] as unknown as number[],
     data: {
-      url: conversationId ? `/_authenticated/chats?c=${conversationId}` : "/_authenticated/chats",
+      url: conversationId ? `/chats?c=${conversationId}` : "/chats",
       conversationId,
     },
   };

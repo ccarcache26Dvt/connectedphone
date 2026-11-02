@@ -22,6 +22,8 @@ describe("chat color palettes", () => {
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("#050505");
 
     applyChatPalette("violet");
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe("oklch(0.105 0 0)");
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      "oklch(0.105 0 0)",
+    );
   });
 });

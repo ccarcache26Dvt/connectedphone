@@ -1,7 +1,7 @@
 # Connectedphone
 
-quiero hacer una aplicacion web al estilo de whassapp 
-que sea mensajeria por el numero telefonico 
+quiero hacer una aplicacion web al estilo de whassapp
+que sea mensajeria por el numero telefonico
 que mantenga las conversaciones
 
 This project was built with [Lovable](https://lovable.dev).
