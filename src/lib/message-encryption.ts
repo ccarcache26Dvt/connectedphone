@@ -17,7 +17,7 @@ function toBase64(value: ArrayBuffer | Uint8Array): string {
   return btoa(binary);
 }
 
-function fromBase64(value: string): Uint8Array {
+function fromBase64(value: string): Uint8Array<ArrayBuffer> {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
@@ -71,7 +71,7 @@ async function savePrivateKey(userId: string, key: CryptoKey): Promise<void> {
   });
 }
 
-async function passwordKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+async function passwordKey(password: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, [
     "deriveKey",
   ]);
