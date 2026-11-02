@@ -114,7 +114,7 @@ export function ChatCustomizerDialog({
   }
 
   function handleOpacityChange(values: number[]) {
-    const val = values[0] / 100;
+    const val = (values[0] ?? 100) / 100;
     const nextConfig = { ...localWallpaper, opacity: val };
     setLocalWallpaper(nextConfig);
     onSaveWallpaper(nextConfig);

@@ -211,9 +211,9 @@ export async function decryptPayload(value: string, key: CryptoKey): Promise<str
     throw new Error("El mensaje cifrado tiene un formato no reconocido.");
   }
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: fromBase64(parts[2]) },
+    { name: "AES-GCM", iv: fromBase64(parts[2] ?? "") },
     key,
-    fromBase64(parts[3]),
+    fromBase64(parts[3] ?? ""),
   );
   return decoder.decode(plaintext);
 }
