@@ -22,7 +22,7 @@ export const notifyNewMessage = createServerFn({ method: "POST" })
       .eq("id", userId)
       .maybeSingle();
 
-    const privateKey = process.env.VAPID_PRIVATE_KEY;
+    const privateKey = process.env["VAPID_PRIVATE_KEY"];
     if (!privateKey) return { sent: 0 };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

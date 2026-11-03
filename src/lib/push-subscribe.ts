@@ -24,9 +24,9 @@ export async function ensurePushSubscription(userId: string): Promise<boolean> {
       });
     }
     const json = sub.toJSON();
-    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
+    if (!json.endpoint || !json.keys?.["p256dh"] || !json.keys?.["auth"]) return false;
     const { error } = await supabase.from("push_subscriptions").upsert(
-      { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+      { user_id: userId, endpoint: json.endpoint, p256dh: json.keys["p256dh"], auth: json.keys["auth"] },
       { onConflict: "endpoint" },
     );
     if (error) console.error("No se pudo guardar la suscripción push", error);
