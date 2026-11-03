@@ -1,4 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   MessageCircle,
   Phone,
@@ -32,6 +34,12 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) navigate({ to: "/chats", replace: true });
+    });
+  }, [navigate]);
   return (
     <main className="relative min-h-screen overflow-hidden bg-glow">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
