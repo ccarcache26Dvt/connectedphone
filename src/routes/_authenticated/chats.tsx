@@ -205,6 +205,7 @@ function ChatsPage() {
     return () => {
       clearInterval(t);
       window.removeEventListener("beforeunload", touch);
+      document.removeEventListener("visibilitychange", onVisibility);
       touch();
       supabase.removeChannel(ch);
     };
