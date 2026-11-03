@@ -49,6 +49,8 @@ import {
 } from "@/lib/message-encryption";
 import { applyChatPalette, getChatPalette, type ChatPaletteId } from "@/lib/chat-themes";
 import { InstallPwaButton } from "@/components/install-pwa-button";
+import { ensurePushSubscription } from "@/lib/push-subscribe";
+import { notifyNewMessage } from "@/lib/push.functions";
 import { CameraCaptureDialog } from "@/components/camera-capture-dialog";
 import { ChatCustomizerDialog } from "@/components/chat-customizer-dialog";
 import {
@@ -141,8 +143,14 @@ function ChatsPage() {
   // Realtime: new / updated messages and conversations
   useEffect(() => {
     // Si la app está instalada como PWA y las notificaciones no se han configurado aún, solicitar permiso
-    if (isPwaInstalled() && isNotificationSupported() && Notification.permission === "default") {
-      void requestPwaNotificationPermission();
+    if (isPwaInstalled() && isNotificationSupported()) {
+      if (Notification.permission === "default") {
+        void requestPwaNotificationPermission().then((p) => {
+          if (p === "granted") void ensurePushSubscription(me);
+        });
+      } else if (Notification.permission === "granted") {
+        void ensurePushSubscription(me);
+      }
     }
 
     const ch = supabase
@@ -739,6 +747,7 @@ function ChatPanel({
         encryption_version: chatKey ? 1 : 0,
       });
       if (error) throw error;
+      void notifyNewMessage({ data: { conversationId: convId } }).catch(() => {});
       setText("");
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations", me] });
@@ -777,6 +786,7 @@ function ChatPanel({
           encryption_version: 0,
         });
         if (error) throw error;
+        void notifyNewMessage({ data: { conversationId: convId } }).catch(() => {});
         qc.invalidateQueries({ queryKey: ["messages", convId] });
         qc.invalidateQueries({ queryKey: ["conversations", me] });
       } catch (error) {
@@ -816,6 +826,7 @@ function ChatPanel({
         encryption_version: 1,
       });
       if (error) throw error;
+      void notifyNewMessage({ data: { conversationId: convId } }).catch(() => {});
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations", me] });
     } catch (error) {
