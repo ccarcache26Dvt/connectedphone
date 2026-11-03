@@ -3,7 +3,7 @@
   "name": "Connected — Mensajería privada",
   "short_name": "Connected",
   "description": "Mensajería privada con cifrado de extremo a extremo.",
-  "start_url": "/",
+  "start_url": "/chats",
   "scope": "/",
   "display": "standalone",
   "background_color": "#111014",

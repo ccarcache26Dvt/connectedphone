@@ -187,8 +187,18 @@ function ChatsPage() {
     ch.subscribe(async (status) => {
       if (status === "SUBSCRIBED") await ch.track({ at: Date.now() });
     });
-    const touch = () =>
-      supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", me);
+    // The query builder is lazy: it only runs when awaited/then'd.
+    const touch = () => {
+      void supabase
+        .from("profiles")
+        .update({ last_seen: new Date().toISOString() })
+        .eq("id", me)
+        .then(({ error }) => {
+          if (error) console.error("No se pudo actualizar la última conexión", error);
+        });
+    };
+    const onVisibility = () => touch();
+    document.addEventListener("visibilitychange", onVisibility);
     touch();
     const t = setInterval(touch, 60_000);
     window.addEventListener("beforeunload", touch);
