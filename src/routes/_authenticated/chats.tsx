@@ -269,7 +269,7 @@ function ChatsPage() {
           active && "hidden md:flex",
         )}
       >
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-4 sm:px-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-3 px-3 py-4 sm:px-4">
           <div className="min-w-0 flex items-center gap-3">
             <Avatar name={myProfile?.display_name ?? ""} />
             <div className="min-w-0 leading-tight">
@@ -280,7 +280,7 @@ function ChatsPage() {
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 gap-0 sm:gap-1 [&>button]:h-8 [&>button]:w-8 [&>button]:shrink-0">
+          <div className="col-span-2 flex shrink-0 justify-end gap-1 [&>button]:h-9 [&>button]:w-9 [&>button]:shrink-0 lg:col-span-1 lg:gap-0 lg:[&>button]:h-8 lg:[&>button]:w-8">
             <Button
               size="icon"
               variant="ghost"
