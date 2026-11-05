@@ -15,3 +15,4 @@
 
 - Keep phone-derived authentication email identifiers stable across brand changes so existing users retain access.
 - Define application colors centrally in semantic CSS tokens so every messaging surface follows the chosen theme.
+- Keep chat panes and text tracks shrinkable, fixed controls non-shrinking, and message/media widths bounded to their pane so long content cannot distort narrow layouts.
