@@ -261,26 +261,26 @@ function ChatsPage() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background">
+    <div className="flex h-dvh w-full min-w-0 overflow-hidden bg-background">
       {/* Sidebar */}
       <aside
         className={cn(
-          "flex w-full flex-col border-r bg-panel md:w-[380px]",
+          "flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col border-r bg-panel md:w-80 lg:w-[380px]",
           active && "hidden md:flex",
         )}
       >
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-3 px-3 py-4 sm:px-4">
           <div className="min-w-0 flex items-center gap-3">
             <Avatar name={myProfile?.display_name ?? ""} />
-            <div className="leading-tight">
-              <div className="font-display text-lg font-semibold">Connected</div>
+            <div className="min-w-0 leading-tight">
+              <div className="truncate font-display text-lg font-semibold">Connected</div>
               <div className="truncate text-sm">{myProfile?.display_name}</div>
-              <div className="text-xs text-muted-foreground">
+              <div className="truncate text-xs text-muted-foreground">
                 {myProfile && formatPhone(myProfile.phone)}
               </div>
             </div>
           </div>
-          <div className="flex gap-1">
+          <div className="col-span-2 flex shrink-0 justify-end gap-1 [&>button]:h-9 [&>button]:w-9 [&>button]:shrink-0 lg:col-span-1 lg:gap-0 lg:[&>button]:h-8 lg:[&>button]:w-8">
             <Button
               size="icon"
               variant="ghost"
@@ -315,7 +315,7 @@ function ChatsPage() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
           {filtered.length === 0 && (
             <div className="px-6 py-16 text-center text-sm text-muted-foreground">
               Aún no tienes chats.
@@ -338,7 +338,7 @@ function ChatsPage() {
       </aside>
 
       {/* Chat panel */}
-      <section className={cn("flex-1", !active && "hidden md:flex")}>
+      <section className={cn("h-full min-h-0 min-w-0 flex-1", !active && "hidden md:flex")}>
         {active ? (
           <ChatPanel
             key={active.conv.id}
@@ -455,7 +455,7 @@ function ConvRow({
     >
       <Avatar name={name} online={online} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2">
           <span className="truncate font-semibold">{name}</span>
           {last && (
             <span
@@ -468,13 +468,13 @@ function ConvRow({
             </span>
           )}
         </div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <span className="flex min-w-0 items-center gap-1 truncate text-sm text-muted-foreground">
             {last && last.sender_id === me && <Ticks read={!!last.read_at} />}
             <span className="truncate">{preview}</span>
           </span>
           {item.unread > 0 && (
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+            <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
               {item.unread}
             </span>
           )}
@@ -927,7 +927,7 @@ function ChatPanel({
   }, [wallpaper]);
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       {/* Capa de fondo personalizado */}
       {wallpaper && wallpaper.mode !== "none" && (
         <div
@@ -936,38 +936,40 @@ function ChatPanel({
         />
       )}
 
-      <header className="relative z-10 flex items-center gap-3 border-b bg-panel/95 backdrop-blur px-4 py-3">
+      <header className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b bg-panel/95 px-3 py-3 backdrop-blur sm:px-4">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <Button
           size="icon"
           variant="ghost"
-          className="md:hidden"
+          className="shrink-0 md:hidden"
           onClick={onBack}
           aria-label="Volver"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <Avatar name={name} online={online} size="sm" />
-        <div className="leading-tight">
-          <div className="font-semibold">{name}</div>
+        <div className="min-w-0 leading-tight">
+          <div className="truncate font-semibold" title={name}>{name}</div>
           <div
-            className={cn("text-xs", typing || online ? "text-online" : "text-muted-foreground")}
+            className={cn("truncate text-xs", typing || online ? "text-online" : "text-muted-foreground")}
           >
             {typing ? "escribiendo…" : online ? "en línea" : other ? lastSeenLabel(other) : ""}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             size="icon"
             variant="ghost"
             onClick={onOpenCustomizer}
             aria-label="Personalizar fondo y colores"
             title="Personalizar fondo y colores"
-            className="text-muted-foreground hover:text-foreground"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             <Sparkles className="h-4 w-4" />
           </Button>
           <div
-            className="flex items-center gap-1 text-xs text-muted-foreground"
+            className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
             title="Cifrado de extremo a extremo"
           >
             <ShieldCheck className="h-4 w-4 text-online" />
@@ -978,7 +980,7 @@ function ChatPanel({
 
       <div
         className={cn(
-          "relative z-10 flex-1 overflow-y-auto px-4 py-6 md:px-10",
+          "relative z-10 min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-6 [overflow-wrap:anywhere] sm:px-4 lg:px-10",
           wallpaper.mode === "none" ? "chat-canvas" : "bg-transparent",
         )}
       >
@@ -1023,18 +1025,18 @@ function ChatPanel({
       </div>
 
       {recording ? (
-        <div className="relative z-10 flex items-center justify-between gap-3 border-t bg-panel/95 backdrop-blur px-4 py-3">
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-3 w-3">
+        <div className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t bg-panel/95 px-3 py-3 backdrop-blur sm:px-4">
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:flex sm:gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-destructive" />
             </span>
-            <span className="text-sm font-medium text-destructive">Grabando nota de voz…</span>
-            <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold text-foreground">
+            <span className="min-w-0 text-sm font-medium text-destructive">Grabando nota de voz…</span>
+            <span className="col-start-2 w-fit shrink-0 rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold text-foreground">
               {formatRecordingDuration(recordingSeconds)}
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -1061,7 +1063,7 @@ function ChatPanel({
       ) : (
         <form
           onSubmit={send}
-          className="relative z-10 flex items-center gap-2 border-t bg-panel/95 backdrop-blur px-3 py-3"
+          className="relative z-10 grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 border-t bg-panel/95 px-2 py-3 backdrop-blur sm:gap-2 sm:px-3"
         >
           <input
             ref={fileRef}
@@ -1073,6 +1075,7 @@ function ChatPanel({
               e.target.value = "";
             }}
           />
+          <div className="flex shrink-0 items-center gap-0 sm:gap-1 [&>button]:h-8 [&>button]:w-8 [&>button]:shrink-0 sm:[&>button]:h-9 sm:[&>button]:w-9">
           <Button
             type="button"
             size="icon"
@@ -1106,16 +1109,17 @@ function ChatPanel({
           >
             <Mic className="h-5 w-5" />
           </Button>
+          </div>
           <Input
             value={text}
             onChange={(e) => onType(e.target.value)}
             placeholder={sending ? "Cifrando y enviando…" : "Escribe un mensaje"}
-            className="h-11 rounded-full"
+            className="h-11 min-w-0 w-full rounded-full"
           />
           <Button
             type="submit"
             size="icon"
-            className="h-11 w-11 shrink-0 rounded-full"
+            className="h-10 w-10 shrink-0 rounded-full sm:h-11 sm:w-11"
             disabled={sending || !text.trim()}
             aria-label="Enviar"
           >
@@ -1147,10 +1151,10 @@ function Bubble({
   chatKey: CryptoKey | null;
 }) {
   return (
-    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+    <div className={cn("flex min-w-0", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[78%] rounded-2xl px-3 py-2 shadow-sm md:max-w-[60%]",
+          "min-w-0 max-w-[85%] rounded-2xl px-3 py-2 shadow-sm [overflow-wrap:anywhere] sm:max-w-[78%] lg:max-w-[60%]",
           mine
             ? "rounded-br-sm bg-bubble-out text-bubble-out-foreground"
             : "rounded-bl-sm bg-bubble-in text-bubble-in-foreground",
@@ -1161,7 +1165,7 @@ function Bubble({
             className="mb-1 flex items-center gap-1 text-[10px] text-amber-500"
             title="Este mensaje se guardó antes de activar el cifrado"
           >
-            <ShieldAlert className="h-3 w-3" />
+            <ShieldAlert className="h-3 w-3 shrink-0" />
             Historial anterior sin cifrar
           </div>
         )}
@@ -1182,7 +1186,7 @@ function Bubble({
             Mensaje cifrado; esperando la clave privada.
           </p>
         )}
-        {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+        {m.body && <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.body}</p>}
         <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-70">
           {format(new Date(m.created_at), "HH:mm")}
           {mine &&
@@ -1256,24 +1260,24 @@ function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | nu
         controls
         preload="metadata"
         src={mediaUrl}
-        className="mb-1 max-w-full"
+        className="mb-1 block w-72 min-w-0 max-w-full"
         aria-label="Nota de voz"
       />
     ) : (
-      <div className="mb-1 h-10 w-56 animate-pulse rounded-xl bg-muted" />
+      <div className="mb-1 h-10 w-56 max-w-full animate-pulse rounded-xl bg-muted" />
     );
   }
   if (m.attachment_type?.startsWith("image/")) {
     return mediaUrl ? (
-      <a href={mediaUrl} target="_blank" rel="noreferrer">
+      <a href={mediaUrl} target="_blank" rel="noreferrer" className="block min-w-0 max-w-full">
         <img
           src={mediaUrl}
           alt={m.attachment_name ?? "Foto"}
-          className="mb-1 max-h-80 rounded-xl object-cover"
+          className="mb-1 block h-auto max-h-80 max-w-full rounded-xl object-contain"
         />
       </a>
     ) : (
-      <div className="mb-1 h-48 w-56 animate-pulse rounded-xl bg-muted" />
+      <div className="mb-1 h-48 w-56 max-w-full animate-pulse rounded-xl bg-muted" />
     );
   }
   return (
@@ -1282,10 +1286,10 @@ function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | nu
       download={m.attachment_name ?? undefined}
       target="_blank"
       rel="noreferrer"
-      className="mb-1 flex items-center gap-2 rounded-xl bg-background/20 px-3 py-2"
+      className="mb-1 grid min-w-0 max-w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl bg-background/20 px-3 py-2"
     >
       <FileText className="h-6 w-6 shrink-0" />
-      <span className="truncate text-sm font-medium">{m.attachment_name}</span>
+      <span className="min-w-0 truncate text-sm font-medium" title={m.attachment_name ?? undefined}>{m.attachment_name}</span>
     </a>
   );
 }
