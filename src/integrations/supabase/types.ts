@@ -173,6 +173,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      find_user_by_phone: { Args: { _phone: string }; Returns: string }
       is_conv_member: { Args: { _conv: string }; Returns: boolean }
     }
     Enums: {

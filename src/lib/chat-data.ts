@@ -58,13 +58,12 @@ export async function fetchMessages(convId: string): Promise<Message[]> {
 }
 
 export async function openConversationWith(me: string, phone: string): Promise<string> {
-  const { data: other, error: profileError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("phone", phone)
-    .maybeSingle();
+  const { data: otherId, error: profileError } = await supabase.rpc("find_user_by_phone", {
+    _phone: phone,
+  });
   if (profileError) throw profileError;
-  if (!other) throw new Error("Ese número aún no está registrado en Connected");
+  if (!otherId) throw new Error("Ese número aún no está registrado en Connected");
+  const other = { id: otherId };
   if (other.id === me) throw new Error("No puedes chatear contigo mismo");
   const [a, b] = [me, other.id].sort() as [string, string];
   const { data: existing, error: lookupError } = await supabase
