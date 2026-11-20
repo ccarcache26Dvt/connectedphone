@@ -36,6 +36,13 @@
       "when": 1795184134337,
       "tag": "0004_contact_nicknames_and_message_replies",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795190106961,
+      "tag": "0005_contact_statuses_and_publications",
+      "breakpoints": true
     }
   ]
 }

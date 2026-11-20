@@ -175,6 +175,53 @@ export type Database = {
         }
         Relationships: []
       }
+      social_publications: {
+        Row: {
+          author_id: string
+          caption: string
+          created_at: string
+          dedication: string
+          expires_at: string | null
+          id: string
+          kind: string
+          media_path: string | null
+          media_type: string | null
+          mentions: Json
+        }
+        Insert: {
+          author_id: string
+          caption?: string
+          created_at?: string
+          dedication?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          media_path?: string | null
+          media_type?: string | null
+          mentions?: Json
+        }
+        Update: {
+          author_id?: string
+          caption?: string
+          created_at?: string
+          dedication?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          media_path?: string | null
+          media_type?: string | null
+          mentions?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_publications_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_encryption_keys: {
         Row: {
           encrypted_private_key: string
@@ -211,6 +258,7 @@ export type Database = {
     Functions: {
       find_user_by_phone: { Args: { _phone: string }; Returns: string }
       is_conv_member: { Args: { _conv: string }; Returns: boolean }
+      social_is_contact: { Args: { _owner: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

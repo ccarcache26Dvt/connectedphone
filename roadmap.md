@@ -9,3 +9,6 @@
 - [x] Add a conversation photo gallery with full-size viewing.
 - [x] Reply to selected messages and preserve the reference in conversation history.
 - [x] Verify privacy, replies, photos, persistence, and narrow-screen layouts with two authenticated accounts at 320, 390, 950 and 1280px; run all 31 tests.
+- [ ] Add contact-only photo/video statuses lasting 24 hours and permanent posts.
+- [ ] Add dedications, searchable hashtags, and contact mentions displaying names instead of phone numbers.
+- [ ] Verify publishing, private media, expiration, mentions, deletion, persistence, and mobile navigation with signed-in accounts.
