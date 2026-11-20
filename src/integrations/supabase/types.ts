@@ -14,6 +14,32 @@ export type Database = {
   }
   public: {
     Tables: {
+      contact_nicknames: {
+        Row: {
+          contact_id: string
+          nickname: string
+          owner_id: string
+        }
+        Insert: {
+          contact_id: string
+          nickname: string
+          owner_id: string
+        }
+        Update: {
+          contact_id?: string
+          nickname?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_nicknames_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversations: {
         Row: {
           created_at: string
@@ -49,6 +75,7 @@ export type Database = {
           encryption_version: number
           id: string
           read_at: string | null
+          reply_to_message_id: string | null
           sender_id: string
         }
         Insert: {
@@ -61,6 +88,7 @@ export type Database = {
           encryption_version?: number
           id?: string
           read_at?: string | null
+          reply_to_message_id?: string | null
           sender_id: string
         }
         Update: {
@@ -73,6 +101,7 @@ export type Database = {
           encryption_version?: number
           id?: string
           read_at?: string | null
+          reply_to_message_id?: string | null
           sender_id?: string
         }
         Relationships: [
@@ -82,6 +111,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "conversations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_same_conversation"
+            columns: ["conversation_id", "reply_to_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["conversation_id", "id"]
           },
         ]
       }
