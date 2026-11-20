@@ -9,12 +9,16 @@ import {
   Check,
   CheckCheck,
   FileText,
+  Image as ImageIcon,
   LogOut,
   MessageCircle,
   Mic,
+  MoreVertical,
   Palette,
   Paperclip,
+  Pencil,
   Plus,
+  Reply,
   Search,
   Send,
   ShieldAlert,
@@ -22,6 +26,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -29,6 +34,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ContactNicknameDialog } from "@/components/contact-nickname-dialog";
+import { ChatPhotoGallery } from "@/components/chat-photo-gallery";
+import { MessageReference } from "@/components/message-reference";
+import { useAttachmentUrl } from "@/hooks/use-attachment-url";
+import { fetchContactNicknames } from "@/lib/contact-nicknames";
+import { contactName, conversationPhotos, findReplyTarget, type DisplayMessage } from "@/lib/chat-features";
 import {
   fetchConversations,
   fetchMessages,
@@ -42,7 +54,6 @@ import { normalizePhone, formatPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import {
   conversationKey,
-  decryptFile,
   decryptPayload,
   encryptFile,
   encryptPayload,
@@ -73,9 +84,9 @@ export const Route = createFileRoute("/_authenticated/chats")({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { title: "Chats — Connected" },
-      { name: "description", content: "Tus conversaciones en Connected." },
+      { name: "description", content: "Tus conversaciones, apodos personales, fotos compartidas y respuestas a mensajes en Connected." },
       { property: "og:title", content: "Chats — Connected" },
-      { property: "og:description", content: "Tus conversaciones en Connected." },
+      { property: "og:description", content: "Tus conversaciones, apodos personales, fotos compartidas y respuestas a mensajes en Connected." },
     ],
   }),
   component: ChatsPage,
@@ -134,6 +145,12 @@ function ChatsPage() {
     queryKey: ["conversations", me],
     queryFn: () => fetchConversations(me),
   });
+  const { data: nicknames = {} } = useQuery({
+    queryKey: ["contact-nicknames", me],
+    queryFn: () => fetchContactNicknames(me),
+  });
+  const nicknamesRef = useRef(nicknames);
+  nicknamesRef.current = nicknames;
 
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
@@ -168,9 +185,9 @@ function ChatsPage() {
           const isDifferentConv = activeIdRef.current !== row.conversation_id;
           if (isDocHidden || isDifferentConv) {
             const senderItem = convsRef.current.find((c) => c.conv.id === row.conversation_id);
-            const senderName =
-              senderItem?.other?.display_name ||
-              (senderItem?.other ? formatPhone(senderItem.other.phone) : "Connected");
+            const senderName = senderItem?.other
+              ? contactName(senderItem.other, nicknamesRef.current[senderItem.other.id])
+              : "Connected";
             void showPwaSystemNotification({
               title: senderName,
               body: row.attachment_path ? "Te envió una foto o archivo" : "Nuevo mensaje privado",
@@ -224,6 +241,7 @@ function ChatsPage() {
     const q = filter.toLowerCase();
     return (
       !q ||
+      contactName(c.other, c.other ? nicknames[c.other.id] : null).toLowerCase().includes(q) ||
       c.other?.display_name.toLowerCase().includes(q) ||
       c.other?.phone.includes(q.replace(/\D/g, "") || "~")
     );
@@ -328,6 +346,7 @@ function ChatsPage() {
             <ConvRow
               key={item.conv.id}
               item={item}
+              nickname={item.other ? nicknames[item.other.id] ?? "" : ""}
               me={me}
               active={item.conv.id === activeId}
               online={!!item.other && online.has(item.other.id)}
@@ -343,6 +362,7 @@ function ChatsPage() {
           <ChatPanel
             key={active.conv.id}
             item={active}
+            nickname={active.other ? nicknames[active.other.id] ?? "" : ""}
             me={me}
             online={!!active.other && online.has(active.other.id)}
             onBack={() => navigate({ search: {} })}
@@ -424,18 +444,20 @@ function Avatar({
 
 function ConvRow({
   item,
+  nickname,
   me,
   active,
   online,
   onClick,
 }: {
   item: ConversationItem;
+  nickname: string;
   me: string;
   active: boolean;
   online: boolean;
   onClick: () => void;
 }) {
-  const name = item.other?.display_name || (item.other ? formatPhone(item.other.phone) : "Usuario");
+  const name = contactName(item.other, nickname);
   const last = item.last;
   const preview = last
     ? last.encryption_version > 0
@@ -492,12 +514,6 @@ function Ticks({ read }: { read: boolean }) {
   );
 }
 
-type DisplayMessage = Message & {
-  legacyHistory?: boolean;
-  decryptError?: boolean;
-  fileIv?: string;
-};
-
 const textMessageSchema = z.object({ kind: z.literal("text"), text: z.string() });
 const attachmentMessageSchema = z.object({
   kind: z.literal("attachment"),
@@ -519,6 +535,7 @@ const encryptedMessageSchema = z.discriminatedUnion("kind", [
 
 function ChatPanel({
   item,
+  nickname,
   me,
   online,
   onBack,
@@ -526,6 +543,7 @@ function ChatPanel({
   onOpenCustomizer,
 }: {
   item: ConversationItem;
+  nickname: string;
   me: string;
   online: boolean;
   onBack: () => void;
@@ -534,7 +552,7 @@ function ChatPanel({
 }) {
   const convId = item.conv.id;
   const other = item.other;
-  const name = other?.display_name || (other ? formatPhone(other.phone) : "Usuario");
+  const name = contactName(other, nickname);
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const [typing, setTyping] = useState(false);
@@ -542,16 +560,48 @@ function ChatPanel({
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [nicknameOpen, setNicknameOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [replyTarget, setReplyTarget] = useState<DisplayMessage | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [displayMessages, setDisplayMessages] = useState<DisplayMessage[]>([]);
   const [chatKey, setChatKey] = useState<CryptoKey | null>(null);
   const [encryptionError, setEncryptionError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const discardRecordingRef = useRef(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const lastTypingSent = useRef(0);
+
+  const photos = useMemo(() => conversationPhotos(displayMessages), [displayMessages]);
+
+  useEffect(() => {
+    if (!highlightedId) return;
+    const timer = setTimeout(() => setHighlightedId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [highlightedId]);
+
+  function jumpToMessage(id: string) {
+    const element = document.getElementById(`message-${id}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" });
+    setHighlightedId(id);
+  }
+
+  function selectReply(message: DisplayMessage) {
+    if (sending || recording) return;
+    setReplyTarget(message);
+    composerRef.current?.focus();
+  }
+
+  function openGallery(photoId: string | null = null) {
+    setSelectedPhotoId(photoId);
+    setGalleryOpen(true);
+  }
 
   const { data: messages = [] } = useQuery({
     queryKey: ["messages", convId],
@@ -734,7 +784,7 @@ function ChatPanel({
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
     const body = text.trim();
-    if (!body) return;
+    if (!body || sending) return;
     setSending(true);
     try {
       const encryptedBody = chatKey
@@ -745,10 +795,12 @@ function ChatPanel({
         sender_id: me,
         body: encryptedBody,
         encryption_version: chatKey ? 1 : 0,
+        reply_to_message_id: replyTarget?.id ?? null,
       });
       if (error) throw error;
       void notifyNewMessage({ data: { conversationId: convId } }).catch(() => {});
       setText("");
+      setReplyTarget(null);
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations", me] });
     } catch (error) {
@@ -763,6 +815,7 @@ function ChatPanel({
   }
 
   async function sendFile(file: File, kind: "attachment" | "voice" = "attachment"): Promise<void> {
+    if (sending) return;
     if (file.size > 20 * 1024 * 1024) {
       toast.error("Máximo 20 MB por archivo");
       return;
@@ -784,8 +837,10 @@ function ChatPanel({
           attachment_type: file.type || "application/octet-stream",
           attachment_name: kind === "voice" ? "Nota de voz" : file.name,
           encryption_version: 0,
+          reply_to_message_id: replyTarget?.id ?? null,
         });
         if (error) throw error;
+        setReplyTarget(null);
         void notifyNewMessage({ data: { conversationId: convId } }).catch(() => {});
         qc.invalidateQueries({ queryKey: ["messages", convId] });
         qc.invalidateQueries({ queryKey: ["conversations", me] });
@@ -824,8 +879,10 @@ function ChatPanel({
         attachment_type: "application/octet-stream",
         attachment_name: null,
         encryption_version: 1,
+        reply_to_message_id: replyTarget?.id ?? null,
       });
       if (error) throw error;
+      setReplyTarget(null);
       void notifyNewMessage({ data: { conversationId: convId } }).catch(() => {});
       qc.invalidateQueries({ queryKey: ["messages", convId] });
       qc.invalidateQueries({ queryKey: ["conversations", me] });
@@ -961,13 +1018,23 @@ function ChatPanel({
           <Button
             size="icon"
             variant="ghost"
-            onClick={onOpenCustomizer}
-            aria-label="Personalizar fondo y colores"
-            title="Personalizar fondo y colores"
+            onClick={() => openGallery()}
+            aria-label="Galería de fotos"
+            title="Galería de fotos"
             className="shrink-0 text-muted-foreground hover:text-foreground"
           >
-            <Sparkles className="h-4 w-4" />
+            <ImageIcon className="h-4 w-4" />
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="shrink-0" aria-label="Opciones del contacto" title="Opciones del contacto"><MoreVertical className="h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!other} onSelect={() => setNicknameOpen(true)}><Pencil />{nickname ? "Editar apodo" : "Poner apodo"}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openGallery()}><ImageIcon />Fotos compartidas</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onOpenCustomizer}><Sparkles />Personalizar fondo y colores</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div
             className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
             title="Cifrado de extremo a extremo"
@@ -1006,7 +1073,11 @@ function ChatPanel({
               </span>
             </div>
             {g.items.map((m) => (
-              <Bubble key={m.id} m={m} mine={m.sender_id === me} chatKey={chatKey} />
+              <Bubble key={m.id} m={m} mine={m.sender_id === me} chatKey={chatKey}
+                replyTo={findReplyTarget(displayMessages, convId, m.reply_to_message_id)}
+                me={me} contactName={name} onReply={() => selectReply(m)}
+                replyDisabled={sending || recording} highlighted={highlightedId === m.id}
+                onJump={jumpToMessage} onOpenPhoto={() => openGallery(m.id)} />
             ))}
           </div>
         ))}
@@ -1024,6 +1095,12 @@ function ChatPanel({
         <div ref={bottomRef} />
       </div>
 
+      {replyTarget && (
+        <div className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t bg-panel px-3 py-2">
+          <MessageReference message={replyTarget} senderName={replyTarget.sender_id === me ? "Tú" : name} onClick={() => jumpToMessage(replyTarget.id)} />
+          <Button type="button" variant="ghost" size="icon" disabled={sending} onClick={() => setReplyTarget(null)} aria-label="Cancelar respuesta" title="Cancelar respuesta"><X className="h-4 w-4" /></Button>
+        </div>
+      )}
       {recording ? (
         <div className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t bg-panel/95 px-3 py-3 backdrop-blur sm:px-4">
           <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:flex sm:gap-3">
@@ -1111,6 +1188,7 @@ function ChatPanel({
           </Button>
           </div>
           <Input
+            ref={composerRef}
             value={text}
             onChange={(e) => onType(e.target.value)}
             placeholder={sending ? "Cifrando y enviando…" : "Escribe un mensaje"}
@@ -1133,6 +1211,10 @@ function ChatPanel({
         onOpenChange={setCameraOpen}
         onCapture={(file) => void sendFile(file, "attachment")}
       />
+      {other && <ContactNicknameDialog open={nicknameOpen} onOpenChange={setNicknameOpen} ownerId={me} contact={other} nickname={nickname} />}
+      <ChatPhotoGallery open={galleryOpen} onOpenChange={setGalleryOpen} photos={photos}
+        selectedId={selectedPhotoId} onSelect={setSelectedPhotoId} contactName={name}
+        chatKey={chatKey} onShowMessage={jumpToMessage} />
     </div>
   );
 }
@@ -1145,21 +1227,39 @@ function Bubble({
   m,
   mine,
   chatKey,
+  replyTo,
+  me,
+  contactName,
+  onReply,
+  replyDisabled,
+  highlighted,
+  onJump,
+  onOpenPhoto,
 }: {
   m: DisplayMessage;
   mine: boolean;
   chatKey: CryptoKey | null;
+  replyTo: DisplayMessage | null;
+  me: string;
+  contactName: string;
+  onReply: () => void;
+  replyDisabled: boolean;
+  highlighted: boolean;
+  onJump: (id: string) => void;
+  onOpenPhoto: () => void;
 }) {
   return (
-    <div className={cn("flex min-w-0", mine ? "justify-end" : "justify-start")}>
+    <div id={`message-${m.id}`} data-message-id={m.id} className={cn("flex min-w-0 scroll-mt-16", mine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "min-w-0 max-w-[85%] rounded-2xl px-3 py-2 shadow-sm [overflow-wrap:anywhere] sm:max-w-[78%] lg:max-w-[60%]",
           mine
             ? "rounded-br-sm bg-bubble-out text-bubble-out-foreground"
             : "rounded-bl-sm bg-bubble-in text-bubble-in-foreground",
+          highlighted && "ring-2 ring-primary",
         )}
       >
+        {m.reply_to_message_id && <MessageReference message={replyTo} senderName={replyTo ? replyTo.sender_id === me ? "Tú" : contactName : "Respuesta"} onClick={() => onJump(m.reply_to_message_id ?? "")} />}
         {m.legacyHistory && (
           <div
             className="mb-1 flex items-center gap-1 text-[10px] text-amber-500"
@@ -1169,9 +1269,9 @@ function Bubble({
             Historial anterior sin cifrar
           </div>
         )}
-        {m.attachment_path && m.encryption_version === 0 && <Attachment m={m} chatKey={chatKey} />}
+        {m.attachment_path && m.encryption_version === 0 && <Attachment m={m} chatKey={chatKey} onOpenPhoto={onOpenPhoto} />}
         {m.attachment_path && m.encryption_version > 0 && m.fileIv && !m.decryptError && (
-          <Attachment m={m} chatKey={chatKey} />
+          <Attachment m={m} chatKey={chatKey} onOpenPhoto={onOpenPhoto} />
         )}
         {m.attachment_path && m.encryption_version > 0 && !m.fileIv && !m.decryptError && (
           <p className="text-sm italic text-muted-foreground">
@@ -1187,7 +1287,9 @@ function Bubble({
           </p>
         )}
         {m.body && <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.body}</p>}
-        <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] opacity-70">
+        <div className="mt-0.5 flex items-center justify-between gap-3 text-[10px]">
+          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-70 hover:opacity-100" onClick={onReply} disabled={replyDisabled} aria-label="Responder mensaje" title="Responder mensaje"><Reply className="h-3.5 w-3.5" /></Button>
+          <span className="flex shrink-0 items-center gap-1 opacity-70">
           {format(new Date(m.created_at), "HH:mm")}
           {mine &&
             (m.read_at ? (
@@ -1195,64 +1297,16 @@ function Bubble({
             ) : (
               <Check className="h-3.5 w-3.5" />
             ))}
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | null }) {
-  const { data: url } = useQuery({
-    queryKey: ["signed", m.attachment_path],
-    staleTime: 50 * 60 * 1000,
-    queryFn: async () => {
-      if (!m.attachment_path) return null;
-      const { data, error } = await supabase.storage
-        .from("attachments")
-        .createSignedUrl(m.attachment_path, 3600);
-      if (error) throw error;
-      return data?.signedUrl ?? null;
-    },
-  });
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    if (!url) {
-      setMediaUrl(null);
-      return;
-    }
-    if (m.encryption_version === 0) {
-      setMediaUrl(url);
-      return;
-    }
-    const fileIv = m.fileIv;
-    const attachmentType = m.attachment_type;
-    if (!chatKey || !fileIv || !attachmentType) {
-      setMediaUrl(null);
-      return;
-    }
-    fetch(url)
-      .then((response) => {
-        if (!response.ok) throw new Error(`No se pudo descargar el archivo (${response.status}).`);
-        return response.arrayBuffer();
-      })
-      .then((encrypted) => decryptFile(encrypted, fileIv, chatKey))
-      .then((decrypted) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(new Blob([decrypted], { type: attachmentType }));
-        setMediaUrl(objectUrl);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled)
-          toast.error(error instanceof Error ? error.message : "No se pudo descifrar el archivo.");
-      });
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [url, m.encryption_version, m.fileIv, m.attachment_type, chatKey]);
+function Attachment({ m, chatKey, onOpenPhoto }: { m: DisplayMessage; chatKey: CryptoKey | null; onOpenPhoto: () => void }) {
+  const { url: mediaUrl, error, retry } = useAttachmentUrl(m, chatKey);
+  if (error) return <div className="flex items-center gap-2 text-xs text-muted-foreground"><span>No se pudo cargar el archivo.</span><Button size="icon" variant="ghost" onClick={retry} aria-label="Reintentar cargar archivo" title="Reintentar cargar archivo"><Reply /></Button></div>;
 
   if (m.attachment_type?.startsWith("audio/")) {
     return mediaUrl ? (
@@ -1269,13 +1323,13 @@ function Attachment({ m, chatKey }: { m: DisplayMessage; chatKey: CryptoKey | nu
   }
   if (m.attachment_type?.startsWith("image/")) {
     return mediaUrl ? (
-      <a href={mediaUrl} target="_blank" rel="noreferrer" className="block min-w-0 max-w-full">
+      <Button type="button" variant="ghost" onClick={onOpenPhoto} aria-label="Abrir foto en la galería" className="block h-auto min-w-0 max-w-full p-0 hover:bg-transparent">
         <img
           src={mediaUrl}
           alt={m.attachment_name ?? "Foto"}
           className="mb-1 block h-auto max-h-80 max-w-full rounded-xl object-contain"
         />
-      </a>
+      </Button>
     ) : (
       <div className="mb-1 h-48 w-56 max-w-full animate-pulse rounded-xl bg-muted" />
     );

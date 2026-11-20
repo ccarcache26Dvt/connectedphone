@@ -16,3 +16,6 @@
 - Keep phone-derived authentication email identifiers stable across brand changes so existing users retain access.
 - Define application colors centrally in semantic CSS tokens so every messaging surface follows the chosen theme.
 - Keep chat panes and text tracks shrinkable, fixed controls non-shrinking, and message/media widths bounded to their pane so long content cannot distort narrow layouts.
+- Store contact nicknames separately with owner-scoped access; never change a contact's shared profile to apply a personal name.
+- Store message replies as same-conversation references, enforced by a composite foreign key; derive quotes from the original message without duplicating plaintext.
+- Use the shared attachment URL hook for messages and the gallery so private storage access and local decryption follow the same path.
