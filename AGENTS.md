@@ -19,3 +19,5 @@
 - Store contact nicknames separately with owner-scoped access; never change a contact's shared profile to apply a personal name.
 - Store message replies as same-conversation references, enforced by a composite foreign key; derive quotes from the original message without duplicating plaintext.
 - Use the shared attachment URL hook for messages and the gallery so private storage access and local decryption follow the same path.
+- Load social feeds with owner-keyed query options in authenticated route loaders; keep media private with short-lived URLs bounded by status expiration so contact access and expiry use the database rules.
+- Resolve phone mentions against chat contacts before saving text, and keep validated user references separately so publications show names without exposing phone identifiers.
