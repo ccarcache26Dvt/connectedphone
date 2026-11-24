@@ -25,6 +25,7 @@ describe("social publications", () => {
   it("replaces a chat contact's phone reference with their registered name", () => {
     expect(resolveMentions("Para @88881234", [ana])).toEqual({ text: "Para @Ana", mentions: [{ id: "ana", name: "Ana" }] });
     expect(resolveMentions("@+50588881234", [ana]).text).toBe("@Ana");
+    expect(resolveMentions("Gracias @8888-1234", [ana]).text).toBe("Gracias @Ana");
   });
   it("refuses phone mentions outside the chat contacts", () => {
     expect(() => resolveMentions("@77770919", [ana])).toThrow();

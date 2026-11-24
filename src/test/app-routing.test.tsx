@@ -14,4 +14,11 @@ describe("App routing", () => {
 
     expect(matches.at(-1)?.routeId).not.toBe(rootRouteId);
   });
+
+  it("matches /chats, /statuses, and /posts routes", () => {
+    const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
+    expect(router.matchRoutes("/chats").at(-1)?.routeId).toBe("/_authenticated/chats");
+    expect(router.matchRoutes("/statuses").at(-1)?.routeId).toBe("/_authenticated/statuses");
+    expect(router.matchRoutes("/posts").at(-1)?.routeId).toBe("/_authenticated/posts");
+  });
 });

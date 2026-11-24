@@ -38,6 +38,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ContactNicknameDialog } from "@/components/contact-nickname-dialog";
 import { ChatPhotoGallery } from "@/components/chat-photo-gallery";
 import { MessageReference } from "@/components/message-reference";
+import { ConnectedNavigation } from "@/components/connected-navigation";
 import { useAttachmentUrl } from "@/hooks/use-attachment-url";
 import { fetchContactNicknames } from "@/lib/contact-nicknames";
 import { contactName, conversationPhotos, findReplyTarget, type DisplayMessage } from "@/lib/chat-features";
@@ -322,7 +323,8 @@ function ChatsPage() {
             </Button>
           </div>
         </div>
-        <div className="px-4 pb-3">
+        <ConnectedNavigation active="chats" />
+        <div className="px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input

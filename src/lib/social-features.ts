@@ -22,8 +22,9 @@ export function readMentions(value: Json): Mention[] {
 // Typed @phone references are resolved only against the author's chat contacts.
 export function resolveMentions(text: string, contacts: Profile[]): { text: string; mentions: Mention[] } {
   const mentions = new Map<string, Mention>();
-  const safeText = text.replace(/@\+?\d{7,15}\b/g, (reference) => {
+  const safeText = text.replace(/@\+?\d[\d-]{5,15}\d\b/g, (reference) => {
     const digits = reference.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15) return reference;
     const contact = contacts.find((profile) => profile.phone.replace(/\D/g, "") === digits || (digits.length >= 8 && profile.phone.replace(/\D/g, "").endsWith(digits)));
     if (!contact) throw new Error("Ese número no corresponde a uno de tus contactos del chat.");
     const mention = { id: contact.id, name: mentionName(contact.display_name) };

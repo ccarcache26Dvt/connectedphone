@@ -64,7 +64,8 @@ export function PublicationComposer({ me, kind, contacts, onClose, onPublished }
     } finally { setBusy(false); }
   }
 
-  const available = contacts.filter((contact) => mentionName(contact.display_name).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) || (search.replace(/\D/g, "") && contact.phone.includes(search.replace(/\D/g, ""))));
+  const searchDigits = search.replace(/\D/g, "");
+  const available = contacts.filter((contact) => mentionName(contact.display_name).toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) || (Boolean(searchDigits) && contact.phone.replace(/\D/g, "").includes(searchDigits)));
   return <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
     <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] max-w-xl overflow-y-auto bg-panel p-4 sm:p-6" onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onInteractOutside={(event) => { if (busy) event.preventDefault(); }}>
       <DialogHeader className="pr-6 text-left"><DialogTitle>{kind === "status" ? "Nuevo estado" : "Nueva publicación"}</DialogTitle><DialogDescription>{kind === "status" ? "Contactos · 24 horas" : "Contactos · Permanente"}</DialogDescription></DialogHeader>
